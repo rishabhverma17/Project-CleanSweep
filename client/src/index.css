@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+:root {
+  --sidebar-bg: #1a1a1a;
+  --content-bg: #202124;
+  --card-bg: #2a2a2d;
+  --card-hover: #333338;
+  --accent: #8ab4f8;
+  --accent-hover: #aecbfa;
+  --text-primary: #e8eaed;
+  --text-secondary: #9aa0a6;
+  --text-muted: #5f6368;
+  --border: #3c4043;
+}
+
+body {
+  margin: 0;
+  background: var(--content-bg);
+  color: var(--text-primary);
+  font-family: 'Google Sans', 'Segoe UI', Roboto, -apple-system, BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #3c4043; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #5f6368; }
+
+/* Selection color */
+::selection { background: rgba(138, 180, 248, 0.3); }
+
+/* Toast animation */
+@keyframes slide-down {
+  from { opacity: 0; transform: translateY(-16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-slide-down {
+  animation: slide-down 0.2s ease-out;
+}

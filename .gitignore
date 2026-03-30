@@ -1,0 +1,51 @@
+# ═══════════════════════════════════════════════
+# CleanSweep .gitignore
+# ═══════════════════════════════════════════════
+
+# .NET build outputs
+bin/
+obj/
+publish/
+*.user
+*.suo
+*.userosscache
+*.nupkg
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ═══ SECRETS — NEVER COMMIT ═══
+# App settings with connection strings / passwords
+src/CleanSweep.API/appsettings.Development.json
+secrets.json
+
+# Scripts containing Azure secrets
+scripts/setup-azure-env.sh
+
+# .NET user secrets (shouldn't be in project, but just in case)
+*.usersecrets
+
+# ═══ DEPLOYMENT ARTIFACTS ═══
+deploy.zip
+src/CleanSweep.API/publish/
+src/CleanSweep.API/wwwroot/
+/tmp/cleansweep-publish/
+/tmp/deploy.zip
+
+# ═══ FRONTEND ═══
+client/node_modules/
+client/dist/
+client/.env.local
+
+# ═══ LOCAL DEV ═══
+azurite-data/
+*.tmp
+*.log
+*.tmp
