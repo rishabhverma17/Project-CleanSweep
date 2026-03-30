@@ -8,9 +8,9 @@
 
 ## Why CleanSweep?
 
-Most cloud photo services charge $3–10/month for 100 GB–2 TB, with per-user fees and limited control.
+Most cloud photo services charge $3–10/month for just 100 GB–2 TB, with per-user fees and limited control.
 
-CleanSweep leverages Azure Blob Storage's Hot tier to give you up to **100 TiB per storage account** — at ~$0.02/GB/month. That's **1 TB for ~$20/month**, with no per-user fees, no AI scanning your photos, and full control over your data. The entire infrastructure (compute, database, storage, auth) runs under **~$25/month** for a family with terabytes of media.
+CleanSweep leverages Azure Blob Storage’s Hot tier to give you up to **100 TiB per storage account** — at just **$0.018/GB/month** (LRS). That’s **1 TB for about $18/month**, with no per-user fees, no AI scanning your photos, and full control over your data. The entire infrastructure (compute, database, storage, auth) runs for roughly **$25/month** for a family with terabytes of media.
 
 **How it works:** Files upload directly from the browser to Azure Blob Storage via SAS tokens — the API server never touches the bytes. Metadata extraction, thumbnail generation, and video transcoding happen asynchronously in background workers. The result: a snappy UI with virtually unlimited storage at commodity cloud prices.
 
@@ -45,13 +45,15 @@ For a family with ~500 GB of photos and videos:
 
 | Resource | Monthly Cost |
 |----------|-------------|
-| Blob Storage (500 GB Hot tier) | ~$10 |
+| Blob Storage (500 GB Hot tier) | $9 |
 | App Service (B2 Linux) | ~$7 |
 | PostgreSQL (B1ms, shared) | ~$0 |
 | Key Vault, App Insights | ~$0 |
-| **Total** | **~$17/month** |
+| **Total** | **$16/month** |
 
-Scale to 2 TB for ~$47/month. Storage is the only cost that grows.
+Scale to 2 TB for about $43/month. Storage is the only cost that grows linearly.
+
+*Prices based on [Azure Blob Storage LRS Hot tier](https://azure.microsoft.com/en-us/pricing/details/storage/blobs/) — $0.018/GB for first 50 TB.*
 
 ---
 
