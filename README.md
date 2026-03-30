@@ -1,6 +1,6 @@
 # CleanSweep
 
-> **A near-unlimited personal media server for families at pennies a month** — powered by Azure Blob Storage's Cool tier (~$0.01/GB/month), turning cheap cloud storage into a full-featured Google Photos alternative.
+> **A near-unlimited personal media server for families at pennies a month** — powered by Azure Blob Storage's Hot tier, turning cheap cloud storage into a full-featured photo and video platform.
 
 **Live:** [cleansweep.rishabhverma.in](https://cleansweep.rishabhverma.in)
 
@@ -8,9 +8,9 @@
 
 ## Why CleanSweep?
 
-Google Photos charges $2.99/month for 100 GB. iCloud charges $9.99/month for 2 TB.
+Most cloud photo services charge $3–10/month for 100 GB–2 TB, with per-user fees and limited control.
 
-CleanSweep stores **1 TB for ~$10/month** on Azure Blob Cool tier — with no per-user fees, no AI scanning your photos, and full control over your data. The entire infrastructure (compute, database, storage, auth) runs under **~$15/month** for a family with terabytes of media.
+CleanSweep leverages Azure Blob Storage's Hot tier to give you up to **100 TiB per storage account** — at ~$0.02/GB/month. That's **1 TB for ~$20/month**, with no per-user fees, no AI scanning your photos, and full control over your data. The entire infrastructure (compute, database, storage, auth) runs under **~$25/month** for a family with terabytes of media.
 
 **How it works:** Files upload directly from the browser to Azure Blob Storage via SAS tokens — the API server never touches the bytes. Metadata extraction, thumbnail generation, and video transcoding happen asynchronously in background workers. The result: a snappy UI with virtually unlimited storage at commodity cloud prices.
 
@@ -29,7 +29,7 @@ CleanSweep stores **1 TB for ~$10/month** on Azure Blob Cool tier — with no pe
 - **Per-user quotas** — admin-configurable (default 500 GB), sidebar usage bar
 - **Admin panel** — user management, quota editing, reprocess/reset
 - **Lightbox** — full-screen viewer with keyboard nav, video playback, inline share
-- **Dark theme** — Google Photos–inspired UI with Lucide React icons
+- **Dark theme** — clean dark UI with Lucide React icons
 - **Azure AD auth** — Microsoft login, role-based access (owner / viewer)
 - **CI/CD** — GitHub Actions builds on PR, auto-deploys to Azure on merge to main
 
@@ -45,13 +45,13 @@ For a family with ~500 GB of photos and videos:
 
 | Resource | Monthly Cost |
 |----------|-------------|
-| Blob Storage (500 GB Cool tier) | ~$5 |
+| Blob Storage (500 GB Hot tier) | ~$10 |
 | App Service (B2 Linux) | ~$7 |
 | PostgreSQL (B1ms, shared) | ~$0 |
 | Key Vault, App Insights | ~$0 |
-| **Total** | **~$12/month** |
+| **Total** | **~$17/month** |
 
-Scale to 2 TB for ~$25/month. Storage is the only cost that grows.
+Scale to 2 TB for ~$47/month. Storage is the only cost that grows.
 
 ---
 
@@ -62,7 +62,7 @@ Scale to 2 TB for ~$25/month. Storage is the only cost that grows.
 | Frontend | React 19, Vite, TypeScript, Tailwind CSS 4, React Query 5, Zustand |
 | Backend | C# .NET 8, ASP.NET Core, Clean Architecture |
 | Database | PostgreSQL (Azure Flexible Server) |
-| Storage | Azure Blob Storage (Cool tier, LRS) |
+| Storage | Azure Blob Storage (Hot tier, LRS) |
 | Auth | Azure AD / Entra ID (MSAL.js + JWT Bearer) |
 | Hosting | Azure App Service (B2 Linux) |
 | Real-time | SignalR |
