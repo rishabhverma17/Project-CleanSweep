@@ -39,9 +39,13 @@ jobs:
       - name: Publish backend
         run: dotnet publish src/CleanSweep.API -c Release -o publish --nologo
 
-      - name: Deploy to Azure App Service
-        uses: azure/webapps-deploy@v3
+      - name: Create deployment zip
+        run: cd publish && zip -r -q ../deploy.zip .
+
+      - name: Login to Azure
+        uses: azure/login@v2
         with:
-          app-name: cleansweep-app
-          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
-          package: publish
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy to Azure App Service
+        run: az webapp deploy --name cleansweep-app --resource-group rg-cleansweep --src-path deploy.zip --type zip --async true
