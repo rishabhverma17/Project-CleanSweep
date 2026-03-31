@@ -41,7 +41,7 @@ export function TaskPanel() {
     <>
       <button
         onClick={toggle}
-        className="fixed bottom-6 right-6 z-40 flex items-center gap-2 px-4 py-2.5 rounded-full shadow-lg transition-all"
+        className="fixed bottom-20 md:bottom-6 right-4 md:right-6 z-40 flex items-center gap-2 px-4 py-2.5 rounded-full shadow-lg transition-all"
         style={{
           background: runningCount > 0 ? 'var(--accent)' : 'var(--card-bg)',
           color: runningCount > 0 ? '#1a1a1a' : 'var(--text-secondary)',
@@ -62,7 +62,7 @@ export function TaskPanel() {
       </button>
 
       {isOpen && (
-        <div className="fixed bottom-20 right-6 z-50 w-96 max-h-[60vh] rounded-xl shadow-2xl overflow-hidden flex flex-col" style={{ background: 'var(--sidebar-bg)', border: '1px solid var(--border)' }}>
+        <div className="fixed bottom-32 md:bottom-20 right-4 md:right-6 z-50 w-80 md:w-96 max-h-[50vh] rounded-xl shadow-2xl overflow-hidden flex flex-col" style={{ background: 'var(--sidebar-bg)', border: '1px solid var(--border)' }}>
           <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid var(--border)' }}>
             <h3 className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Tasks</h3>
             <div className="flex gap-2">

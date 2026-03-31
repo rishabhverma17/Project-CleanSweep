@@ -80,32 +80,49 @@ export function MediaViewer({ item, items, onClose, onNavigate, onDownload, onDe
     return () => window.removeEventListener('keydown', handleKey);
   }, [onClose, goNext, goPrev]);
 
+  // Swipe support for mobile
+  useEffect(() => {
+    let startX = 0;
+    let startY = 0;
+    const handleTouchStart = (e: TouchEvent) => { startX = e.touches[0].clientX; startY = e.touches[0].clientY; };
+    const handleTouchEnd = (e: TouchEvent) => {
+      const dx = e.changedTouches[0].clientX - startX;
+      const dy = e.changedTouches[0].clientY - startY;
+      if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 50) {
+        if (dx > 0) goPrev(); else goNext();
+      }
+    };
+    window.addEventListener('touchstart', handleTouchStart, { passive: true });
+    window.addEventListener('touchend', handleTouchEnd, { passive: true });
+    return () => { window.removeEventListener('touchstart', handleTouchStart); window.removeEventListener('touchend', handleTouchEnd); };
+  }, [goNext, goPrev]);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.95)' }} onClick={onClose}>
-      <button onClick={onClose} className="absolute top-4 right-4 transition z-10" style={{ color: 'var(--text-muted)' }} onMouseEnter={e => (e.target as HTMLElement).style.color = 'var(--text-primary)'} onMouseLeave={e => (e.target as HTMLElement).style.color = 'var(--text-muted)'}><X size={24} /></button>
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center" style={{ background: 'rgba(0,0,0,0.95)' }} onClick={onClose}>
+      <button onClick={onClose} className="absolute top-3 right-3 transition z-10 p-2 rounded-full" style={{ color: 'var(--text-muted)', background: 'rgba(255,255,255,0.1)' }}><X size={22} /></button>
 
       {hasPrev && (
-        <button onClick={e => { e.stopPropagation(); goPrev(); }} className="absolute left-4 top-1/2 -translate-y-1/2 transition z-10 p-2" style={{ color: 'var(--text-muted)' }} onMouseEnter={e => (e.target as HTMLElement).style.color = 'var(--text-primary)'} onMouseLeave={e => (e.target as HTMLElement).style.color = 'var(--text-muted)'}><ChevronLeft size={36} /></button>
+        <button onClick={e => { e.stopPropagation(); goPrev(); }} className="absolute left-1 md:left-4 top-1/2 -translate-y-1/2 transition z-10 p-2 rounded-full" style={{ color: 'var(--text-muted)', background: 'rgba(255,255,255,0.1)' }}><ChevronLeft size={28} /></button>
       )}
       {hasNext && (
-        <button onClick={e => { e.stopPropagation(); goNext(); }} className="absolute right-4 top-1/2 -translate-y-1/2 transition z-10 p-2" style={{ color: 'var(--text-muted)' }} onMouseEnter={e => (e.target as HTMLElement).style.color = 'var(--text-primary)'} onMouseLeave={e => (e.target as HTMLElement).style.color = 'var(--text-muted)'}><ChevronRight size={36} /></button>
+        <button onClick={e => { e.stopPropagation(); goNext(); }} className="absolute right-1 md:right-4 top-1/2 -translate-y-1/2 transition z-10 p-2 rounded-full" style={{ color: 'var(--text-muted)', background: 'rgba(255,255,255,0.1)' }}><ChevronRight size={28} /></button>
       )}
 
-      <div className="relative max-w-6xl max-h-[90vh] w-full mx-16" onClick={e => e.stopPropagation()}>
+      <div className="relative w-full max-w-6xl max-h-[85vh] mx-2 md:mx-16 flex flex-col" onClick={e => e.stopPropagation()}>
         {isVideo && item.playbackUrl ? (
-          <video src={item.playbackUrl} controls autoPlay className="w-full max-h-[82vh] rounded-lg mx-auto" />
+          <video src={item.playbackUrl} controls autoPlay className="w-full max-h-[75vh] md:max-h-[82vh] rounded-lg mx-auto" />
         ) : item.playbackUrl || item.thumbnailUrl ? (
-          <img src={item.playbackUrl || item.thumbnailUrl} alt={item.fileName} className="w-full max-h-[82vh] object-contain rounded-lg mx-auto" />
+          <img src={item.playbackUrl || item.thumbnailUrl} alt={item.fileName} className="w-full max-h-[75vh] md:max-h-[82vh] object-contain rounded-lg mx-auto" />
         ) : (
           <div className="flex items-center justify-center h-64" style={{ color: 'var(--text-muted)' }}>Processing...</div>
         )}
 
-        <div className="mt-3 flex items-center justify-between text-sm px-1" style={{ color: 'var(--text-secondary)' }}>
-          <div className="flex items-center gap-3 min-w-0">
-            <span className="truncate max-w-xs">{item.fileName}</span>
-            {items && <span style={{ color: 'var(--text-muted)' }}>{currentIndex + 1}/{items.length}</span>}
+        <div className="mt-2 flex flex-col sm:flex-row items-start sm:items-center justify-between text-sm px-1 gap-2" style={{ color: 'var(--text-secondary)' }}>
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="truncate max-w-[180px] md:max-w-xs text-xs sm:text-sm">{item.fileName}</span>
+            {items && <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{currentIndex + 1}/{items.length}</span>}
           </div>
-          <div className="flex gap-2 items-center flex-shrink-0">
+          <div className="flex gap-1.5 items-center flex-wrap">
             {item.capturedAt && <span className="hidden sm:inline flex items-center gap-1"><Calendar size={14} /> {new Date(item.capturedAt).toLocaleDateString()}</span>}
             {item.width && item.height && <span className="hidden sm:inline flex items-center gap-1"><Ruler size={14} /> {item.width}×{item.height}</span>}
             <span className="flex items-center gap-1"><HardDrive size={14} /> {(item.fileSizeBytes / 1024 / 1024).toFixed(1)} MB</span>
