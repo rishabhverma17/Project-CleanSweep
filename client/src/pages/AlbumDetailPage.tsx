@@ -77,6 +77,15 @@ export function AlbumDetailPage() {
     });
   };
 
+  const handleDownloadAlbum = async () => {
+    if (sortedMedia.length === 0) return;
+    const ids = sortedMedia.map(m => m.id);
+    await runTask(`Downloading album "${data?.album.name}"`, async () => {
+      if (ids.length === 1) await mediaApi.download(ids[0]);
+      else await mediaApi.downloadBatch(ids);
+    });
+  };
+
   const handleDownload = (item: MediaItem) => {
     runTask(`Downloading "${item.fileName}"`, () => mediaApi.download(item.id));
   };
@@ -134,6 +143,11 @@ export function AlbumDetailPage() {
                 <Undo2 size={14} /> Remove ({selectedIds.size})
               </button>
             </>
+          )}
+          {sortedMedia.length > 0 && (
+            <button onClick={handleDownloadAlbum} className="px-3 py-1.5 bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700 rounded-md text-sm transition flex items-center gap-1">
+              <Download size={14} /> Download Album
+            </button>
           )}
           <button onClick={handleDeleteAlbum} className="px-3 py-1.5 bg-zinc-800 text-zinc-500 hover:text-red-400 hover:bg-zinc-700 rounded-md text-xs transition flex items-center gap-1">
             <Trash2 size={12} /> Delete Album
