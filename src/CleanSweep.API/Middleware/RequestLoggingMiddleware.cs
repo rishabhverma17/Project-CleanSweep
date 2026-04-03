@@ -13,13 +13,24 @@ public class RequestLoggingMiddleware
         _logger = logger;
     }
 
+    private static readonly HashSet<string> _skipPrefixes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "/hub", "/_blazor", "/favicon.ico"
+    };
+
     public async Task InvokeAsync(HttpContext context)
     {
-        var sw = Stopwatch.StartNew();
-        var method = context.Request.Method;
         var path = context.Request.Path;
 
-        _logger.LogInformation("→ {Method} {Path}", method, path);
+        // Skip noisy paths entirely (SignalR, static assets)
+        if (_skipPrefixes.Any(p => path.StartsWithSegments(p)))
+        {
+            await _next(context);
+            return;
+        }
+
+        var sw = Stopwatch.StartNew();
+        var method = context.Request.Method;
 
         try
         {
@@ -28,8 +39,20 @@ public class RequestLoggingMiddleware
         finally
         {
             sw.Stop();
-            _logger.LogInformation("← {Method} {Path} {StatusCode} {ElapsedMs}ms",
-                method, path, context.Response.StatusCode, sw.ElapsedMilliseconds);
+            var statusCode = context.Response.StatusCode;
+            var elapsed = sw.ElapsedMilliseconds;
+
+            // Only log failed requests (4xx/5xx) or slow requests (>500ms)
+            if (statusCode >= 400)
+            {
+                _logger.LogWarning("{Method} {Path} {StatusCode} {ElapsedMs}ms",
+                    method, path, statusCode, elapsed);
+            }
+            else if (elapsed > 500)
+            {
+                _logger.LogInformation("SLOW {Method} {Path} {StatusCode} {ElapsedMs}ms",
+                    method, path, statusCode, elapsed);
+            }
         }
     }
 }

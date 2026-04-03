@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { mediaApi } from '../api/mediaApi';
 
 interface UploadItem {
@@ -7,14 +7,51 @@ interface UploadItem {
   status: 'queued' | 'uploading' | 'completing' | 'done' | 'error';
   mediaId?: string;
   error?: string;
+  folderGroup?: string; // which album/folder this file belongs to
 }
 
 const MAX_CONCURRENT = 3;
 const MAX_RETRIES = 3;
 const INITIAL_RETRY_DELAY = 1000;
 
+/**
+ * Parse folder structure from webkitRelativePath.
+ * Input: "Photos/Beach Trip/IMG_001.jpg"
+ * Returns: "Beach Trip" (skips top-level selected folder)
+ * Input: "Photos/IMG_002.jpg" → null (root level, no subfolder)
+ * Input: "Photos/Summer/Beach/IMG.jpg" → "Summer/Beach" (preserves nesting)
+ */
+export function parseFolderGroup(file: File): string | null {
+  const path = (file as any).webkitRelativePath as string | undefined;
+  if (!path) return null;
+  
+  const parts = path.split('/');
+  // parts[0] = top-level folder (the one user selected), parts[-1] = filename
+  if (parts.length <= 2) return null; // file directly in selected folder, no subfolder
+  
+  // Everything between top-level folder and filename = subfolder path
+  const subfolders = parts.slice(1, -1).join('/');
+  return subfolders || null;
+}
+
+/**
+ * Group files by their folder structure.
+ * Returns: Map of folderName → File[]
+ * Files with no subfolder go to the "__root__" group.
+ */
+export function groupFilesByFolder(files: File[]): Map<string, File[]> {
+  const groups = new Map<string, File[]>();
+  for (const file of files) {
+    const folder = parseFolderGroup(file) ?? '__root__';
+    if (!groups.has(folder)) groups.set(folder, []);
+    groups.get(folder)!.push(file);
+  }
+  return groups;
+}
+
 export function useUpload(onComplete?: () => void) {
   const [uploads, setUploads] = useState<UploadItem[]>([]);
+  const completedMediaIdsRef = useRef<Map<number, string>>(new Map()); // index → mediaId
 
   const updateUpload = (index: number, update: Partial<UploadItem>) => {
     setUploads(prev => prev.map((u, i) => i === index ? { ...u, ...update } : u));
@@ -38,6 +75,8 @@ export function useUpload(onComplete?: () => void) {
       await mediaApi.completeUpload(mediaId);
 
       updateUpload(index, { status: 'done' });
+      // Track completed mediaId for album assignment
+      if (mediaId) completedMediaIdsRef.current.set(index, mediaId);
     } catch (err: any) {
       // Auto-retry up to MAX_RETRIES before showing error
       if (attempt < MAX_RETRIES) {
@@ -80,27 +119,49 @@ export function useUpload(onComplete?: () => void) {
     }
   };
 
-  const startUpload = useCallback((files: File[]) => {
-    const items: UploadItem[] = files.map(file => ({ file, progress: 0, status: 'queued' }));
+  const startUpload = useCallback((files: File[], folderGroups?: Map<string, File[]>): Promise<Map<string, string[]>> => {
+    completedMediaIdsRef.current = new Map();
+    
+    const items: UploadItem[] = files.map(file => ({
+      file,
+      progress: 0,
+      status: 'queued',
+      folderGroup: folderGroups ? (parseFolderGroup(file) ?? undefined) : undefined,
+    }));
     setUploads(items);
 
-    // Process with concurrency limit
-    let active = 0;
-    let nextIndex = 0;
+    return new Promise((resolve) => {
+      let active = 0;
+      let nextIndex = 0;
 
-    const processNext = () => {
-      while (active < MAX_CONCURRENT && nextIndex < items.length) {
-        const idx = nextIndex++;
-        active++;
-        uploadFile(files[idx], idx).finally(() => {
-          active--;
-          processNext();
-          if (active === 0 && nextIndex >= items.length) onComplete?.();
-        });
-      }
-    };
+      const processNext = () => {
+        while (active < MAX_CONCURRENT && nextIndex < items.length) {
+          const idx = nextIndex++;
+          active++;
+          uploadFile(files[idx], idx).finally(() => {
+            active--;
+            processNext();
+            if (active === 0 && nextIndex >= items.length) {
+              // All uploads done — build folder → mediaIds map
+              const folderMediaMap = new Map<string, string[]>();
+              if (folderGroups) {
+                items.forEach((item, i) => {
+                  const mediaId = completedMediaIdsRef.current.get(i);
+                  if (mediaId && item.folderGroup) {
+                    if (!folderMediaMap.has(item.folderGroup)) folderMediaMap.set(item.folderGroup, []);
+                    folderMediaMap.get(item.folderGroup)!.push(mediaId);
+                  }
+                });
+              }
+              onComplete?.();
+              resolve(folderMediaMap);
+            }
+          });
+        }
+      };
 
-    processNext();
+      processNext();
+    });
   }, []);
 
   const retryUpload = useCallback((index: number) => {
