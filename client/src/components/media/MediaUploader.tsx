@@ -320,11 +320,12 @@ export function MediaUploader({ onComplete }: Props) {
         </div>
       )}
 
-      {/* Upload progress */}
+      {/* Upload console */}
       {uploads.length > 0 && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-medium text-zinc-400">
+        <div className="rounded-xl overflow-hidden" style={{ background: 'var(--card-bg)', border: '1px solid var(--border)' }}>
+          {/* Console header */}
+          <div className="flex items-center justify-between px-4 py-2.5" style={{ borderBottom: '1px solid var(--border)' }}>
+            <h3 className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
               {doneCount} / {uploads.length} files uploaded
               {failedCount > 0 && <span className="text-red-400 ml-2">({failedCount} failed)</span>}
             </h3>
@@ -335,52 +336,55 @@ export function MediaUploader({ onComplete }: Props) {
                 </button>
               )}
               {doneCount > 0 && (
-                <button onClick={clearCompleted} className="text-xs px-3 py-1 bg-zinc-800 hover:bg-zinc-700 rounded text-zinc-400 transition">
+                <button onClick={clearCompleted} className="text-xs px-3 py-1 rounded transition" style={{ background: 'var(--sidebar-bg)', color: 'var(--text-muted)' }}>
                   Clear done
                 </button>
               )}
             </div>
           </div>
-          {uploads.map((upload, i) => (
-            <div key={i} className="flex items-center gap-3 bg-zinc-900 rounded-lg p-3">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <p className="text-sm text-white truncate">{upload.file.name}</p>
-                  {upload.folderGroup && (
-                    <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'rgba(138,180,248,0.1)', color: 'var(--accent)' }}>
-                      {upload.folderGroup}
-                    </span>
+          {/* Scrollable file list */}
+          <div className="overflow-y-auto space-y-px" style={{ maxHeight: '400px' }}>
+            {uploads.map((upload, i) => (
+              <div key={i} className="flex items-center gap-3 px-4 py-2" style={{ background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm truncate" style={{ color: 'var(--text-primary)' }}>{upload.file.name}</p>
+                    {upload.folderGroup && (
+                      <span className="text-xs px-1.5 py-0.5 rounded flex-shrink-0" style={{ background: 'rgba(138,180,248,0.1)', color: 'var(--accent)' }}>
+                        {upload.folderGroup}
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-1 h-1 rounded-full overflow-hidden" style={{ background: 'var(--sidebar-bg)' }}>
+                    <div
+                      className={`h-full rounded-full transition-all duration-300 ${
+                        upload.status === 'error' ? 'bg-red-500' :
+                        upload.status === 'done' ? 'bg-green-500' : 'bg-blue-500'
+                      }`}
+                      style={{ width: `${upload.progress}%` }}
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <span className="text-xs whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>
+                    {upload.status === 'queued' && 'Queued'}
+                    {upload.status === 'uploading' && `${upload.progress}%`}
+                    {upload.status === 'completing' && 'Finalizing...'}
+                    {upload.status === 'done' && <CheckCircle2 size={14} style={{ color: '#4ade80' }} />}
+                    {upload.status === 'error' && <XCircle size={14} style={{ color: '#f87171' }} />}
+                  </span>
+                  {upload.status === 'error' && (
+                    <button
+                      onClick={() => retryUpload(i)}
+                      className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-700 rounded text-white transition"
+                    >
+                      Retry
+                    </button>
                   )}
                 </div>
-                <div className="mt-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all duration-300 ${
-                      upload.status === 'error' ? 'bg-red-500' :
-                      upload.status === 'done' ? 'bg-green-500' : 'bg-blue-500'
-                    }`}
-                    style={{ width: `${upload.progress}%` }}
-                  />
-                </div>
               </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <span className="text-xs text-zinc-500 whitespace-nowrap">
-                  {upload.status === 'queued' && 'Queued'}
-                  {upload.status === 'uploading' && `${upload.progress}%`}
-                  {upload.status === 'completing' && 'Finalizing...'}
-                  {upload.status === 'done' && <CheckCircle2 size={14} style={{ color: '#4ade80' }} />}
-                  {upload.status === 'error' && <XCircle size={14} style={{ color: '#f87171' }} />}
-                </span>
-                {upload.status === 'error' && (
-                  <button
-                    onClick={() => retryUpload(i)}
-                    className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-700 rounded text-white transition"
-                  >
-                    Retry
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       )}
     </div>

@@ -135,12 +135,22 @@ export function useUpload(onComplete?: () => void) {
 
   const startUpload = useCallback((files: File[], folderGroups?: Map<string, File[]>): Promise<Map<string, string[]>> => {
     completedMediaIdsRef.current = new Map();
-    
+
+    // Build file → folder lookup from the passed folderGroups map
+    // (parseFolderGroup returns null for root-level files, but the caller
+    //  may have already assigned them a group name, e.g. the top-level folder)
+    const fileFolderLookup = new Map<File, string>();
+    if (folderGroups) {
+      for (const [folder, groupFiles] of folderGroups) {
+        for (const f of groupFiles) fileFolderLookup.set(f, folder);
+      }
+    }
+
     const items: UploadItem[] = files.map(file => ({
       file,
       progress: 0,
       status: 'queued',
-      folderGroup: folderGroups ? (parseFolderGroup(file) ?? undefined) : undefined,
+      folderGroup: fileFolderLookup.get(file),
     }));
     setUploads(items);
 
