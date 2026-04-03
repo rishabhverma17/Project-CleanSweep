@@ -38,11 +38,32 @@ export function parseFolderGroup(file: File): string | null {
  * Group files by their folder structure.
  * Returns: Map of folderName → File[]
  * Files with no subfolder go to the "__root__" group.
+ *
+ * Detects multi-folder selection (user selected multiple folders at once)
+ * vs single-folder selection (user selected one parent folder).
+ * - Multi-folder: groups by each selected folder name (parts[0])
+ * - Single-folder: groups by subfolders within the selected folder
  */
 export function groupFilesByFolder(files: File[]): Map<string, File[]> {
+  // Detect if multiple top-level folders are present (multi-folder selection)
+  const topLevelFolders = new Set<string>();
+  for (const file of files) {
+    const path = (file as any).webkitRelativePath as string | undefined;
+    if (path) topLevelFolders.add(path.split('/')[0]);
+  }
+  const isMultiFolder = topLevelFolders.size > 1;
+
   const groups = new Map<string, File[]>();
   for (const file of files) {
-    const folder = parseFolderGroup(file) ?? '__root__';
+    let folder: string;
+    if (isMultiFolder) {
+      // Multi-folder: group by the top-level folder name (the folder user selected)
+      const path = (file as any).webkitRelativePath as string | undefined;
+      folder = path ? path.split('/')[0] : '__root__';
+    } else {
+      // Single folder: group by subfolders within the selected folder
+      folder = parseFolderGroup(file) ?? '__root__';
+    }
     if (!groups.has(folder)) groups.set(folder, []);
     groups.get(folder)!.push(file);
   }
