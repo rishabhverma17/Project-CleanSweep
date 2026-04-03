@@ -64,7 +64,7 @@ public class AlbumController : ControllerBase
             });
         }
 
-        return Ok(new { album = new AlbumDto { Id = album.Id, Name = album.Name, Description = album.Description, CoverThumbnailUrl = album.CoverThumbnailUrl, MediaCount = mediaItems.Count, CreatedAt = album.CreatedAt }, media = mediaItems });
+        return Ok(new { album = new AlbumDto { Id = album.Id, Name = album.Name, Description = album.Description, CoverThumbnailUrl = album.CoverThumbnailUrl, MediaCount = mediaItems.Count, IsHidden = album.IsHidden, CreatedAt = album.CreatedAt }, media = mediaItems });
     }
 
     [HttpPost]
@@ -91,6 +91,13 @@ public class AlbumController : ControllerBase
     {
         await _albumService.DeleteAlbumAsync(albumId, deleteMedia, ct);
         return NoContent();
+    }
+
+    [HttpPatch("{albumId:guid}/hidden")]
+    public async Task<ActionResult> ToggleHidden(Guid albumId, CancellationToken ct)
+    {
+        var isHidden = await _albumService.ToggleHiddenAsync(albumId, ct);
+        return Ok(new { isHidden });
     }
 }
 

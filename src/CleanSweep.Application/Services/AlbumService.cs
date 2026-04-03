@@ -49,6 +49,7 @@ public class AlbumService
             Description = a.Description,
             CoverThumbnailUrl = a.CoverThumbnailUrl,
             MediaCount = a.AlbumMedia.Count(am => am.Media != null && !am.Media.IsDeleted),
+            IsHidden = a.IsHidden,
             CreatedAt = a.CreatedAt
         }).ToList();
     }
@@ -91,5 +92,14 @@ public class AlbumService
             }
         }
         await _albumRepo.DeleteAsync(albumId, ct);
+    }
+
+    public async Task<bool> ToggleHiddenAsync(Guid albumId, CancellationToken ct)
+    {
+        var album = await _albumRepo.GetByIdWithMediaAsync(albumId, ct)
+            ?? throw new KeyNotFoundException("Album not found");
+        album.IsHidden = !album.IsHidden;
+        await _albumRepo.UpdateAsync(album, ct);
+        return album.IsHidden;
     }
 }

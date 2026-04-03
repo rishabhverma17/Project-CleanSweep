@@ -9,6 +9,7 @@ public class Album
     public Guid? CoverMediaId { get; set; }
     public string? CoverThumbnailUrl { get; set; }
     public Guid? FamilyId { get; set; }  // null = personal, set = family album
+    public bool IsHidden { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
 
     public AppUser User { get; set; } = null!;

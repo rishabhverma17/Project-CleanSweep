@@ -33,4 +33,9 @@ export const albumApi = {
   removeMedia: async (albumId: string, mediaId: string) => {
     await api.delete(`/api/album/${albumId}/media/${mediaId}`);
   },
+
+  toggleHidden: async (albumId: string) => {
+    const { data } = await api.patch<{ isHidden: boolean }>(`/api/album/${albumId}/hidden`);
+    return data;
+  },
 };

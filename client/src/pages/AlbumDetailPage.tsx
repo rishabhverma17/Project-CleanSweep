@@ -7,7 +7,7 @@ import { MediaGrid } from '../components/media/MediaGrid';
 import { MediaViewer } from '../components/media/MediaViewer';
 import { useTrackedTask } from '../hooks/useTrackedTask';
 import type { MediaItem } from '../types/media';
-import { ArrowLeft, Check, Download, Undo2, Trash2, Camera } from 'lucide-react';
+import { ArrowLeft, Check, Download, Undo2, Trash2, Camera, EyeOff, Eye } from 'lucide-react';
 
 function sortMedia(items: MediaItem[], sort: string): MediaItem[] {
   const sorted = [...items];
@@ -90,6 +90,14 @@ export function AlbumDetailPage() {
     runTask(`Downloading "${item.fileName}"`, () => mediaApi.download(item.id));
   };
 
+  const handleToggleHidden = async () => {
+    if (!albumId) return;
+    await albumApi.toggleHidden(albumId);
+    queryClient.invalidateQueries({ queryKey: ['album', albumId] });
+    queryClient.invalidateQueries({ queryKey: ['albums'] });
+    queryClient.invalidateQueries({ queryKey: ['media'] });
+  };
+
   const handleDeleteAlbum = async () => {
     if (!albumId || !data) return;
     const choice = window.prompt(
@@ -111,7 +119,14 @@ export function AlbumDetailPage() {
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <div>
           <button onClick={() => navigate('/albums')} className="text-zinc-500 hover:text-white text-sm mb-1 transition flex items-center gap-1"><ArrowLeft size={14} /> Albums</button>
-          <h2 className="text-2xl font-bold">{data.album.name}</h2>
+          <h2 className="text-2xl font-bold">
+            {data.album.name}
+            {data.album.isHidden && (
+              <span className="ml-2 text-sm font-normal px-2 py-0.5 rounded-full align-middle" style={{ background: 'rgba(255,255,255,0.1)', color: 'var(--text-muted)' }}>
+                <EyeOff size={12} className="inline mr-1" />Hidden
+              </span>
+            )}
+          </h2>
           {data.album.description && <p className="text-zinc-500 text-sm">{data.album.description}</p>}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -149,6 +164,9 @@ export function AlbumDetailPage() {
               <Download size={14} /> Download Album
             </button>
           )}
+          <button onClick={handleToggleHidden} className="px-3 py-1.5 bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700 rounded-md text-sm transition flex items-center gap-1">
+            {data.album.isHidden ? <><Eye size={14} /> Unhide</> : <><EyeOff size={14} /> Hide</>}
+          </button>
           <button onClick={handleDeleteAlbum} className="px-3 py-1.5 bg-zinc-800 text-zinc-500 hover:text-red-400 hover:bg-zinc-700 rounded-md text-xs transition flex items-center gap-1">
             <Trash2 size={12} /> Delete Album
           </button>

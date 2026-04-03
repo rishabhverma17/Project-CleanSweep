@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { albumApi } from '../api/albumApi';
-import { FolderOpen, Trash2 } from 'lucide-react';
+import { FolderOpen, Trash2, EyeOff, Eye } from 'lucide-react';
 
 export function AlbumsPage() {
   const navigate = useNavigate();
@@ -33,6 +33,13 @@ export function AlbumsPage() {
     await albumApi.deleteAlbum(albumId, deleteMedia);
     queryClient.invalidateQueries({ queryKey: ['albums'] });
     if (deleteMedia) queryClient.invalidateQueries({ queryKey: ['media'] });
+  };
+
+  const handleToggleHidden = async (e: React.MouseEvent, albumId: string) => {
+    e.stopPropagation();
+    await albumApi.toggleHidden(albumId);
+    queryClient.invalidateQueries({ queryKey: ['albums'] });
+    queryClient.invalidateQueries({ queryKey: ['media'] });
   };
 
   if (isLoading) return <div className="text-zinc-500 py-20 text-center">Loading...</div>;
@@ -84,7 +91,12 @@ export function AlbumsPage() {
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
           {albums.map(album => (
-            <div key={album.id} className="bg-zinc-900 rounded-lg overflow-hidden group relative cursor-pointer" onClick={() => navigate(`/albums/${album.id}`)}>
+            <div key={album.id} className={`bg-zinc-900 rounded-lg overflow-hidden group relative cursor-pointer ${album.isHidden ? 'opacity-60' : ''}`} onClick={() => navigate(`/albums/${album.id}`)}>
+              {album.isHidden && (
+                <div className="absolute top-2 left-2 z-10 flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium" style={{ background: 'rgba(0,0,0,0.7)', color: 'var(--text-muted)' }}>
+                  <EyeOff size={12} /> Hidden
+                </div>
+              )}
               <div className="aspect-video bg-zinc-800 flex items-center justify-center text-3xl">
                 {album.coverThumbnailUrl ? (
                   <img src={album.coverThumbnailUrl} alt={album.name} className="w-full h-full object-cover" />
@@ -95,12 +107,21 @@ export function AlbumsPage() {
                   <p className="font-medium truncate">{album.name}</p>
                   <p className="text-xs text-zinc-500">{album.mediaCount} items</p>
                 </div>
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleDeleteAlbum(album.id, album.name); }}
-                  className="text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition"
-                >
-                  <Trash2 size={16} />
-                </button>
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
+                  <button
+                    onClick={(e) => handleToggleHidden(e, album.id)}
+                    className="text-zinc-600 hover:text-zinc-300 transition p-1"
+                    title={album.isHidden ? 'Unhide album' : 'Hide album'}
+                  >
+                    {album.isHidden ? <Eye size={16} /> : <EyeOff size={16} />}
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleDeleteAlbum(album.id, album.name); }}
+                    className="text-zinc-600 hover:text-red-400 transition p-1"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
               </div>
             </div>
           ))}

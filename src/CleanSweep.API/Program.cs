@@ -7,6 +7,7 @@ using CleanSweep.Application.Configuration;
 using CleanSweep.Infrastructure;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Identity.Web;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -70,6 +71,13 @@ builder.Services.AddCors(options =>
 
 // ═══ BUILD ═══
 var app = builder.Build();
+
+// ═══ AUTO-MIGRATE DATABASE ═══
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<CleanSweep.Infrastructure.Persistence.AppDbContext>();
+    await db.Database.MigrateAsync();
+}
 
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseMiddleware<RequestLoggingMiddleware>();

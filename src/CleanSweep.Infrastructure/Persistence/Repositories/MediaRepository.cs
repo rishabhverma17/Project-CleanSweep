@@ -24,7 +24,12 @@ public class MediaRepository : IMediaRepository
 
     public async Task<PaginatedResult<MediaItem>> BrowseAsync(string userId, int page, int pageSize, MediaType? type, DateTimeOffset? from, DateTimeOffset? to, string? sort, CancellationToken ct)
     {
-        var query = _db.MediaItems.Where(m => m.UserId == userId && !m.IsDeleted);
+        // IDs of media that belong to any hidden album for this user
+        var hiddenMediaIds = _db.AlbumMedia
+            .Where(am => am.Album.UserId == userId && am.Album.IsHidden)
+            .Select(am => am.MediaId);
+
+        var query = _db.MediaItems.Where(m => m.UserId == userId && !m.IsDeleted && !hiddenMediaIds.Contains(m.Id));
 
         if (type.HasValue) query = query.Where(m => m.MediaType == type.Value);
         if (from.HasValue) query = query.Where(m => m.CapturedAt >= from.Value);

@@ -34,5 +34,6 @@ export interface Album {
   description?: string;
   coverThumbnailUrl?: string;
   mediaCount: number;
+  isHidden: boolean;
   createdAt: string;
 }
