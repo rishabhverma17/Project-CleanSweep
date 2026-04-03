@@ -1,10 +1,11 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useRef, useState, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { useQueryClient } from '@tanstack/react-query';
 import { useUpload, groupFilesByFolder, getTopLevelFolderName } from '../../hooks/useUpload';
 import { albumApi } from '../../api/albumApi';
 import { useTrackedTask } from '../../hooks/useTrackedTask';
-import { FolderOpen, FolderUp, RefreshCw, CheckCircle2, XCircle, Album, ArrowRight } from 'lucide-react';
+import { FolderOpen, FolderUp, RefreshCw, CheckCircle2, XCircle, Album, ArrowRight, ChevronDown } from 'lucide-react';
+import type { Album as AlbumType } from '../../types/media';
 
 const SUPPORTED_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.heic', '.heif', '.mp4', '.mov', '.m4v']);
 
@@ -22,6 +23,12 @@ interface FolderPreview {
   topLevelFolderName?: string; // the selected folder name (for flat folders)
 }
 
+interface FolderAlbumAssignment {
+  type: 'new' | 'existing';
+  existingAlbumId?: string;
+  existingAlbumName?: string;
+}
+
 interface Props {
   onComplete?: () => void;
 }
@@ -32,6 +39,32 @@ export function MediaUploader({ onComplete }: Props) {
   const { runTask } = useTrackedTask();
   const folderInputRef = useRef<HTMLInputElement>(null);
   const [folderPreview, setFolderPreview] = useState<FolderPreview | null>(null);
+  const [existingAlbums, setExistingAlbums] = useState<AlbumType[]>([]);
+  const [folderAssignments, setFolderAssignments] = useState<Map<string, FolderAlbumAssignment>>(new Map());
+  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+
+  // Fetch existing albums when folder preview modal opens
+  useEffect(() => {
+    if (folderPreview) {
+      albumApi.getAll().then(setExistingAlbums).catch(() => setExistingAlbums([]));
+      // Initialize all folders as "new album"
+      const assignments = new Map<string, FolderAlbumAssignment>();
+      for (const folder of folderPreview.folderGroups.keys()) {
+        assignments.set(folder, { type: 'new' });
+      }
+      setFolderAssignments(assignments);
+      setOpenDropdown(null);
+    }
+  }, [folderPreview]);
+
+  const setFolderAssignment = (folder: string, assignment: FolderAlbumAssignment) => {
+    setFolderAssignments(prev => {
+      const next = new Map(prev);
+      next.set(folder, assignment);
+      return next;
+    });
+    setOpenDropdown(null);
+  };
 
   const doneCount = uploads.filter(u => u.status === 'done').length;
   const failedCount = uploads.filter(u => u.status === 'error').length;
@@ -78,19 +111,32 @@ export function MediaUploader({ onComplete }: Props) {
       return;
     }
 
-    // Upload all files, then create albums from folder structure
+    // Upload all files, then create/assign albums from folder structure
     const folderMediaMap = await startUpload(files, folderGroups);
 
-    // Create albums for each folder group
     if (folderMediaMap.size > 0) {
-      await runTask(`Creating ${folderMediaMap.size} album(s) from folders`, async () => {
+      const newCount = [...folderAssignments.values()].filter(a => a.type === 'new').length;
+      const existingCount = [...folderAssignments.values()].filter(a => a.type === 'existing').length;
+      const label = [
+        newCount > 0 ? `Creating ${newCount} album(s)` : '',
+        existingCount > 0 ? `Adding to ${existingCount} existing album(s)` : '',
+      ].filter(Boolean).join(', ');
+
+      await runTask(label || 'Assigning media to albums', async () => {
         for (const [folderName, mediaIds] of folderMediaMap) {
           if (mediaIds.length === 0) continue;
+          const assignment = folderAssignments.get(folderName);
           try {
-            const album = await albumApi.create(folderName);
-            await albumApi.addMedia(album.id, mediaIds);
+            if (assignment?.type === 'existing' && assignment.existingAlbumId) {
+              // Add to existing album
+              await albumApi.addMedia(assignment.existingAlbumId, mediaIds);
+            } else {
+              // Create new album
+              const album = await albumApi.create(folderName);
+              await albumApi.addMedia(album.id, mediaIds);
+            }
           } catch (err) {
-            console.error(`Failed to create album "${folderName}":`, err);
+            console.error(`Failed to assign album "${folderName}":`, err);
           }
         }
         queryClient.invalidateQueries({ queryKey: ['albums'] });
@@ -159,19 +205,86 @@ export function MediaUploader({ onComplete }: Props) {
 
             {/* Folder → Album mapping preview */}
             <div className="space-y-2 mb-4">
-              {[...folderPreview.folderGroups.entries()].map(([folder, files]) => (
-                <div key={folder} className="flex items-center gap-3 px-3 py-2.5 rounded-lg" style={{ background: 'var(--card-bg)' }}>
-                  <Album size={16} style={{ color: 'var(--accent)' }} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>{folder}</p>
-                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{files.length} file{files.length !== 1 ? 's' : ''}</p>
+              {[...folderPreview.folderGroups.entries()].map(([folder, files]) => {
+                const assignment = folderAssignments.get(folder);
+                const isDropdownOpen = openDropdown === folder;
+                return (
+                  <div key={folder} className="relative">
+                    <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg" style={{ background: 'var(--card-bg)' }}>
+                      <Album size={16} style={{ color: 'var(--accent)' }} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>{folder}</p>
+                        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{files.length} file{files.length !== 1 ? 's' : ''}</p>
+                      </div>
+                      <ArrowRight size={14} style={{ color: 'var(--text-muted)' }} />
+                      {/* Album assignment picker */}
+                      <button
+                        onClick={() => setOpenDropdown(isDropdownOpen ? null : folder)}
+                        className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full cursor-pointer transition hover:brightness-125"
+                        style={{
+                          background: assignment?.type === 'existing' ? 'rgba(74,222,128,0.15)' : 'rgba(138,180,248,0.15)',
+                          color: assignment?.type === 'existing' ? '#4ade80' : 'var(--accent)',
+                        }}
+                      >
+                        <span className="truncate max-w-[120px]">
+                          {assignment?.type === 'existing' ? assignment.existingAlbumName : 'New Album'}
+                        </span>
+                        <ChevronDown size={12} />
+                      </button>
+                    </div>
+
+                    {/* Dropdown for album selection */}
+                    {isDropdownOpen && (
+                      <div
+                        className="absolute right-0 top-full mt-1 z-10 w-64 rounded-lg shadow-xl overflow-hidden"
+                        style={{ background: 'var(--sidebar-bg)', border: '1px solid var(--border)' }}
+                      >
+                        <div
+                          className="px-3 py-2 text-xs cursor-pointer transition hover:brightness-125 flex items-center gap-2"
+                          style={{
+                            color: 'var(--accent)',
+                            background: assignment?.type === 'new' ? 'rgba(138,180,248,0.1)' : 'transparent',
+                          }}
+                          onClick={() => setFolderAssignment(folder, { type: 'new' })}
+                        >
+                          <Album size={14} />
+                          <span className="font-medium">New Album</span>
+                          <span style={{ color: 'var(--text-muted)' }}>"{folder}"</span>
+                        </div>
+                        {existingAlbums.length > 0 && (
+                          <>
+                            <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider" style={{ color: 'var(--text-muted)', borderTop: '1px solid var(--border)' }}>
+                              Existing Albums
+                            </div>
+                            <div className="max-h-40 overflow-y-auto">
+                              {existingAlbums.map(album => (
+                                <div
+                                  key={album.id}
+                                  className="px-3 py-2 text-xs cursor-pointer transition hover:brightness-125 flex items-center gap-2"
+                                  style={{
+                                    color: 'var(--text-primary)',
+                                    background: assignment?.type === 'existing' && assignment.existingAlbumId === album.id
+                                      ? 'rgba(74,222,128,0.1)' : 'transparent',
+                                  }}
+                                  onClick={() => setFolderAssignment(folder, {
+                                    type: 'existing',
+                                    existingAlbumId: album.id,
+                                    existingAlbumName: album.name,
+                                  })}
+                                >
+                                  <Album size={14} style={{ color: 'var(--text-muted)' }} />
+                                  <span className="truncate">{album.name}</span>
+                                  <span className="ml-auto text-[10px]" style={{ color: 'var(--text-muted)' }}>{album.mediaCount} items</span>
+                                </div>
+                              ))}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  <ArrowRight size={14} style={{ color: 'var(--text-muted)' }} />
-                  <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'rgba(138,180,248,0.15)', color: 'var(--accent)' }}>
-                    New Album
-                  </span>
-                </div>
-              ))}
+                );
+              })}
 
               {folderPreview.rootFiles.length > 0 && (
                 <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg" style={{ background: 'var(--card-bg)' }}>
@@ -200,7 +313,7 @@ export function MediaUploader({ onComplete }: Props) {
                 className="px-4 py-2 rounded-lg text-sm font-medium transition"
                 style={{ background: 'var(--accent)', color: '#1a1a1a' }}
               >
-                Upload & create {folderPreview.folderGroups.size} album{folderPreview.folderGroups.size !== 1 ? 's' : ''}
+                Upload & assign to {folderPreview.folderGroups.size} album{folderPreview.folderGroups.size !== 1 ? 's' : ''}
               </button>
             </div>
           </div>
