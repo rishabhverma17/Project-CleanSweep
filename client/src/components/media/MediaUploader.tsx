@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { useQueryClient } from '@tanstack/react-query';
-import { useUpload, groupFilesByFolder } from '../../hooks/useUpload';
+import { useUpload, groupFilesByFolder, getTopLevelFolderName } from '../../hooks/useUpload';
 import { albumApi } from '../../api/albumApi';
 import { useTrackedTask } from '../../hooks/useTrackedTask';
 import { FolderOpen, FolderUp, RefreshCw, CheckCircle2, XCircle, Album, ArrowRight } from 'lucide-react';
@@ -19,6 +19,7 @@ interface FolderPreview {
   files: File[];
   folderGroups: Map<string, File[]>;
   rootFiles: File[];
+  topLevelFolderName?: string; // the selected folder name (for flat folders)
 }
 
 interface Props {
@@ -48,12 +49,18 @@ export function MediaUploader({ onComplete }: Props) {
     const folderGroups = groupFilesByFolder(supported);
     const rootFiles = folderGroups.get('__root__') || [];
     folderGroups.delete('__root__');
+    const topLevelFolderName = getTopLevelFolderName(supported) ?? undefined;
 
-    // If there are subfolders, show the preview modal
-    if (folderGroups.size > 0) {
-      setFolderPreview({ files: supported, folderGroups, rootFiles });
+    // Always show modal for folder uploads so user can create an album
+    if (folderGroups.size > 0 || topLevelFolderName) {
+      // If no subfolders, treat all root files as one album named after the folder
+      if (folderGroups.size === 0 && topLevelFolderName) {
+        folderGroups.set(topLevelFolderName, rootFiles);
+        setFolderPreview({ files: supported, folderGroups, rootFiles: [], topLevelFolderName });
+      } else {
+        setFolderPreview({ files: supported, folderGroups, rootFiles, topLevelFolderName });
+      }
     } else {
-      // No subfolders — just upload flat
       startUpload(supported);
     }
 

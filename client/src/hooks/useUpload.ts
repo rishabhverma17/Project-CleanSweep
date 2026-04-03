@@ -49,6 +49,20 @@ export function groupFilesByFolder(files: File[]): Map<string, File[]> {
   return groups;
 }
 
+/**
+ * Extract the top-level folder name from webkitRelativePath.
+ * Input: "Beach Trip/IMG_001.jpg" → "Beach Trip"
+ * Input: "Photos/sub/IMG.jpg" → "Photos"
+ */
+export function getTopLevelFolderName(files: File[]): string | null {
+  const first = files[0];
+  if (!first) return null;
+  const path = (first as any).webkitRelativePath as string | undefined;
+  if (!path) return null;
+  const parts = path.split('/');
+  return parts.length >= 2 ? parts[0] : null;
+}
+
 export function useUpload(onComplete?: () => void) {
   const [uploads, setUploads] = useState<UploadItem[]>([]);
   const completedMediaIdsRef = useRef<Map<number, string>>(new Map()); // index → mediaId
