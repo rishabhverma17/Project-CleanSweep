@@ -95,28 +95,107 @@ public class AdminController : ControllerBase
     [HttpPost("reprocess")]
     public async Task<ActionResult> ReprocessAll(CancellationToken ct)
     {
-        var items = await _db.MediaItems
+        // Count items that need reprocessing
+        var count = await _db.MediaItems
             .Where(m => !m.IsDeleted && (m.ProcessingStatus == ProcessingStatus.Complete || m.ProcessingStatus == ProcessingStatus.Failed))
-            .ToListAsync(ct);
+            .CountAsync(ct);
 
-        foreach (var item in items)
+        if (count == 0)
+            return Ok(new { message = "No items to reprocess." });
+
+        // Queue in background to avoid timeout
+        _ = Task.Run(async () =>
         {
-            item.ProcessingStatus = ProcessingStatus.Pending;
-            item.ThumbnailBlobPath = null;
-
-            await _processingQueue.EnqueueAsync(new ProcessingMessage
+            try
             {
-                MediaId = item.Id,
-                BlobPath = item.OriginalBlobPath,
-                ContentType = item.ContentType,
-                FileName = item.FileName,
-                UserId = item.UserId,
-                CorrelationId = Guid.NewGuid().ToString("N")
-            }, ct);
-        }
+                using var scope = HttpContext.RequestServices.GetRequiredService<IServiceScopeFactory>().CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                var queue = scope.ServiceProvider.GetRequiredService<IMediaProcessingQueue>();
 
-        await _db.SaveChangesAsync(ct);
-        return Ok(new { message = $"Queued {items.Count} item(s) for reprocessing." });
+                var items = await db.MediaItems
+                    .Where(m => !m.IsDeleted && (m.ProcessingStatus == ProcessingStatus.Complete || m.ProcessingStatus == ProcessingStatus.Failed))
+                    .ToListAsync();
+
+                foreach (var item in items)
+                {
+                    item.ProcessingStatus = ProcessingStatus.Pending;
+                    item.ThumbnailBlobPath = null;
+
+                    await queue.EnqueueAsync(new ProcessingMessage
+                    {
+                        MediaId = item.Id,
+                        BlobPath = item.OriginalBlobPath,
+                        ContentType = item.ContentType,
+                        FileName = item.FileName,
+                        UserId = item.UserId,
+                        CorrelationId = Guid.NewGuid().ToString("N")
+                    });
+                }
+
+                await db.SaveChangesAsync();
+                _logger.LogInformation("Queued {Count} items for reprocessing", items.Count);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to queue items for reprocessing");
+            }
+        });
+
+        return Accepted(new { message = $"Queuing {count} item(s) for reprocessing. This runs in the background." });
+    }
+
+    [HttpPost("reprocess-stuck")]
+    public async Task<ActionResult> ReprocessStuck(CancellationToken ct)
+    {
+        // Find items that are stuck: not deleted, no thumbnail, and status is not Complete
+        var count = await _db.MediaItems
+            .Where(m => !m.IsDeleted
+                && m.ThumbnailBlobPath == null
+                && m.ProcessingStatus != ProcessingStatus.Complete)
+            .CountAsync(ct);
+
+        if (count == 0)
+            return Ok(new { message = "No stuck items found." });
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var scope = HttpContext.RequestServices.GetRequiredService<IServiceScopeFactory>().CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                var queue = scope.ServiceProvider.GetRequiredService<IMediaProcessingQueue>();
+
+                var items = await db.MediaItems
+                    .Where(m => !m.IsDeleted
+                        && m.ThumbnailBlobPath == null
+                        && m.ProcessingStatus != ProcessingStatus.Complete)
+                    .ToListAsync();
+
+                foreach (var item in items)
+                {
+                    item.ProcessingStatus = ProcessingStatus.Pending;
+
+                    await queue.EnqueueAsync(new ProcessingMessage
+                    {
+                        MediaId = item.Id,
+                        BlobPath = item.OriginalBlobPath,
+                        ContentType = item.ContentType,
+                        FileName = item.FileName,
+                        UserId = item.UserId,
+                        CorrelationId = Guid.NewGuid().ToString("N")
+                    });
+                }
+
+                await db.SaveChangesAsync();
+                _logger.LogInformation("Queued {Count} stuck items for reprocessing", items.Count);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to queue stuck items for reprocessing");
+            }
+        });
+
+        return Accepted(new { message = $"Queuing {count} stuck item(s) for reprocessing. This runs in the background." });
     }
 
     [HttpPost("fix-stuck-status")]

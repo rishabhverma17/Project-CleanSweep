@@ -33,6 +33,20 @@ export function AdminPage() {
     });
   };
 
+  const handleReprocessStuck = async () => {
+    await runTask('Reprocessing stuck media', async () => {
+      const result = await adminApi.reprocessStuck();
+      alert(result.message);
+    });
+  };
+
+  const handleFixStuck = async () => {
+    await runTask('Fixing stuck statuses', async () => {
+      const result = await adminApi.fixStuckStatus();
+      alert(result.message);
+    });
+  };
+
   const handleSaveQuota = async () => {
     if (!editingQuota) return;
     const gb = parseFloat(quotaInput);
@@ -71,9 +85,15 @@ export function AdminPage() {
       </div>
 
       {/* Actions */}
-      <div className="flex gap-3 mb-8">
+      <div className="flex gap-3 mb-8 flex-wrap">
         <button onClick={handleReprocess} className="px-4 py-2 rounded-lg text-sm transition flex items-center gap-1.5" style={{ background: 'var(--card-bg)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>
           <RefreshCw size={14} /> Reprocess All Media
+        </button>
+        <button onClick={handleReprocessStuck} className="px-4 py-2 rounded-lg text-sm transition flex items-center gap-1.5" style={{ background: 'var(--card-bg)', color: 'var(--accent)', border: '1px solid var(--border)' }}>
+          <RefreshCw size={14} /> Reprocess Stuck (no thumbnail)
+        </button>
+        <button onClick={handleFixStuck} className="px-4 py-2 rounded-lg text-sm transition flex items-center gap-1.5" style={{ background: 'var(--card-bg)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>
+          Fix Stuck Statuses
         </button>
         <button onClick={handleReset} className="px-4 py-2 bg-red-800 hover:bg-red-700 rounded-lg text-sm text-white transition flex items-center gap-1.5">
           <AlertTriangle size={14} /> Reset All Data

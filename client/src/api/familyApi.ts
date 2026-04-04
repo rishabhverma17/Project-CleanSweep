@@ -77,4 +77,12 @@ export const adminApi = {
     const { data } = await api.post('/api/admin/reprocess');
     return data as { message: string };
   },
+  reprocessStuck: async () => {
+    const { data } = await api.post('/api/admin/reprocess-stuck');
+    return data as { message: string };
+  },
+  fixStuckStatus: async () => {
+    const { data } = await api.post('/api/admin/fix-stuck-status');
+    return data as { message: string };
+  },
 };
