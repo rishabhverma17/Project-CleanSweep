@@ -34,6 +34,7 @@ builder.Services.AddInfrastructure(builder.Configuration);
 // ═══ BACKGROUND SERVICES ═══
 builder.Services.AddHostedService<ProcessingBackgroundService>();
 builder.Services.AddHostedService<TranscodeBackgroundService>();
+builder.Services.AddHostedService<CleanupBackgroundService>();
 
 // ═══ AUTH ═══
 var azureAdEnabled = builder.Configuration.GetValue<bool>("AzureAd:Enabled");

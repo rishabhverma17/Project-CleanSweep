@@ -77,6 +77,7 @@ public class MediaRepository : IMediaRepository
         if (item != null)
         {
             item.IsDeleted = true;
+            item.DeletedAt = DateTimeOffset.UtcNow;
             await _db.SaveChangesAsync(ct);
         }
     }
@@ -85,7 +86,26 @@ public class MediaRepository : IMediaRepository
     {
         await _db.MediaItems
             .Where(m => ids.Contains(m.Id) && !m.IsDeleted)
-            .ExecuteUpdateAsync(s => s.SetProperty(m => m.IsDeleted, true), ct);
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(m => m.IsDeleted, true)
+                .SetProperty(m => m.DeletedAt, DateTimeOffset.UtcNow), ct);
+    }
+
+    public async Task<List<MediaItem>> GetSoftDeletedAsync(TimeSpan olderThan, int limit, CancellationToken ct)
+    {
+        var cutoff = DateTimeOffset.UtcNow - olderThan;
+        return await _db.MediaItems
+            .Where(m => m.IsDeleted && m.DeletedAt != null && m.DeletedAt < cutoff)
+            .OrderBy(m => m.DeletedAt)
+            .Take(limit)
+            .ToListAsync(ct);
+    }
+
+    public async Task HardDeleteBatchAsync(List<Guid> ids, CancellationToken ct)
+    {
+        await _db.MediaItems
+            .Where(m => ids.Contains(m.Id))
+            .ExecuteDeleteAsync(ct);
     }
 
     public async Task<long> GetUserStorageUsageAsync(string userId, CancellationToken ct)

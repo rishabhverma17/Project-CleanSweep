@@ -42,47 +42,12 @@ public class MediaService
     }
 
     /// <summary>
-    /// Fast batch delete: soft-deletes in DB immediately, returns blob paths for background cleanup.
+    /// Soft-deletes media items in DB. Blob cleanup + hard delete handled by CleanupBackgroundService.
     /// </summary>
-    public async Task<List<BlobCleanupItem>> DeleteBatchAsync(List<Guid> mediaIds, CancellationToken ct)
+    public async Task DeleteBatchAsync(List<Guid> mediaIds, CancellationToken ct)
     {
-        // Fetch all items to get blob paths (parallelized)
-        var fetchTasks = mediaIds.Select(id => _mediaRepo.GetByIdAsync(id, ct));
-        var items = (await Task.WhenAll(fetchTasks)).Where(i => i != null).ToList();
-
-        if (items.Count == 0) return [];
-
-        // Collect blob paths before soft-delete makes them invisible
-        var blobsToDelete = items.Select(item => new BlobCleanupItem
-        {
-            OriginalBlobPath = item!.OriginalBlobPath,
-            ThumbnailBlobPath = item.ThumbnailBlobPath,
-            PlaybackBlobPath = item.PlaybackBlobPath != item.OriginalBlobPath ? item.PlaybackBlobPath : null,
-        }).ToList();
-
-        // Single SQL UPDATE — instant
         await _mediaRepo.SoftDeleteBatchAsync(mediaIds, ct);
-
-        _logger.LogInformation("Batch soft-deleted {Count} media items, queuing blob cleanup", items.Count);
-
-        return blobsToDelete;
-    }
-
-    /// <summary>
-    /// Deletes blobs in parallel. Safe to run in background (no DB, no request scope).
-    /// </summary>
-    public async Task CleanupBlobsAsync(List<BlobCleanupItem> blobs, CancellationToken ct)
-    {
-        await Parallel.ForEachAsync(blobs, new ParallelOptions { MaxDegreeOfParallelism = 16, CancellationToken = ct }, async (item, token) =>
-        {
-            try { await _blobService.DeleteAsync(_storageOptions.OriginalsContainer, item.OriginalBlobPath, token); } catch { }
-            if (item.ThumbnailBlobPath != null)
-                try { await _blobService.DeleteAsync(_storageOptions.ThumbnailsContainer, item.ThumbnailBlobPath, token); } catch { }
-            if (item.PlaybackBlobPath != null)
-                try { await _blobService.DeleteAsync(_storageOptions.PlaybackContainer, item.PlaybackBlobPath, token); } catch { }
-        });
-
-        _logger.LogInformation("Cleaned up blobs for {Count} deleted media items", blobs.Count);
+        _logger.LogInformation("Batch soft-deleted {Count} media items", mediaIds.Count);
     }
 }
 

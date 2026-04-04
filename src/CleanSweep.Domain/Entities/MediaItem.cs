@@ -22,6 +22,7 @@ public class MediaItem
     public DateTimeOffset UploadedAt { get; set; }
     public ProcessingStatus ProcessingStatus { get; set; }
     public bool IsDeleted { get; set; }
+    public DateTimeOffset? DeletedAt { get; set; }
 
     public AppUser User { get; set; } = null!;
     public ICollection<AlbumMedia> AlbumMedia { get; set; } = new List<AlbumMedia>();

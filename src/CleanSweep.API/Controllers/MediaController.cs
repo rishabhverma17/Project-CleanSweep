@@ -112,18 +112,9 @@ public class MediaController : ControllerBase
         if (input.MediaIds.Count > 1000) return BadRequest(new { error = "Maximum 1000 items per batch." });
 
         // Soft-delete in DB immediately (fast single SQL UPDATE)
-        var blobsToClean = await _mediaService.DeleteBatchAsync(input.MediaIds, ct);
+        // CleanupBackgroundService handles blob deletion + hard-delete later
+        await _mediaService.DeleteBatchAsync(input.MediaIds, ct);
         await _notificationService.BroadcastMediaChangedAsync(ct);
-
-        // Fire-and-forget blob cleanup in background
-        if (blobsToClean.Count > 0)
-        {
-            _ = Task.Run(async () =>
-            {
-                try { await _mediaService.CleanupBlobsAsync(blobsToClean, CancellationToken.None); }
-                catch { /* logged inside CleanupBlobsAsync */ }
-            });
-        }
 
         return Accepted(new { deleted = input.MediaIds.Count });
     }

@@ -13,5 +13,7 @@ public interface IMediaRepository
     Task UpdateAsync(MediaItem item, CancellationToken ct = default);
     Task SoftDeleteAsync(Guid id, CancellationToken ct = default);
     Task SoftDeleteBatchAsync(List<Guid> ids, CancellationToken ct = default);
+    Task<List<MediaItem>> GetSoftDeletedAsync(TimeSpan olderThan, int limit, CancellationToken ct = default);
+    Task HardDeleteBatchAsync(List<Guid> ids, CancellationToken ct = default);
     Task<long> GetUserStorageUsageAsync(string userId, CancellationToken ct = default);
 }
