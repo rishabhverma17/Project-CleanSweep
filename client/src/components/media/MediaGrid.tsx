@@ -1,4 +1,4 @@
-import { useRef, useCallback } from 'react';
+import { useRef, useCallback, useEffect, useState } from 'react';
 import type { MediaItem } from '../../types/media';
 import { MediaCard } from './MediaCard';
 import { Camera } from 'lucide-react';
@@ -27,8 +27,66 @@ function groupByMonth(items: MediaItem[]): [string, MediaItem[]][] {
   return [...groups.entries()];
 }
 
+/** Detect current grid column count from a grid container element */
+function getGridColumns(el: HTMLElement | null): number {
+  if (!el) return 1;
+  const style = getComputedStyle(el);
+  const cols = style.gridTemplateColumns.split(' ').length;
+  return cols || 1;
+}
+
 export function MediaGrid({ items, selectMode, selectedIds, onToggleSelect, onRangeSelect, onSelect, onDownload, onDelete, onAddToAlbum, groupByDate = true }: Props) {
   const lastClickedIndexRef = useRef<number>(-1);
+  const [focusIndex, setFocusIndex] = useState<number>(-1);
+  const gridRef = useRef<HTMLDivElement>(null);
+
+  // Keyboard navigation: Shift + Arrow keys for range selection
+  useEffect(() => {
+    if (!selectMode || focusIndex < 0) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!e.shiftKey) return;
+      const arrowKeys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'];
+      if (!arrowKeys.includes(e.key)) return;
+
+      e.preventDefault();
+
+      // Find the first grid element to get column count
+      const gridEl = gridRef.current?.querySelector('.grid') as HTMLElement | null;
+      const cols = getGridColumns(gridEl);
+
+      let nextIndex = focusIndex;
+      switch (e.key) {
+        case 'ArrowRight': nextIndex = Math.min(items.length - 1, focusIndex + 1); break;
+        case 'ArrowLeft': nextIndex = Math.max(0, focusIndex - 1); break;
+        case 'ArrowDown': nextIndex = Math.min(items.length - 1, focusIndex + cols); break;
+        case 'ArrowUp': nextIndex = Math.max(0, focusIndex - cols); break;
+      }
+
+      if (nextIndex !== focusIndex && nextIndex >= 0 && nextIndex < items.length) {
+        // Add the item at nextIndex to selection
+        const id = items[nextIndex].id;
+        if (!selectedIds?.has(id)) {
+          onRangeSelect ? onRangeSelect([id]) : onToggleSelect?.(id);
+        }
+        setFocusIndex(nextIndex);
+
+        // Scroll the new item into view
+        const cards = gridEl?.children;
+        if (cards && cards[nextIndex]) {
+          (cards[nextIndex] as HTMLElement).scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectMode, focusIndex, items, selectedIds, onRangeSelect, onToggleSelect]);
+
+  // Reset focus when leaving select mode
+  useEffect(() => {
+    if (!selectMode) setFocusIndex(-1);
+  }, [selectMode]);
 
   const handleItemClick = useCallback((item: MediaItem, e: React.MouseEvent) => {
     if (!selectMode) {
@@ -49,6 +107,7 @@ export function MediaGrid({ items, selectMode, selectedIds, onToggleSelect, onRa
     }
 
     lastClickedIndexRef.current = currentIndex;
+    setFocusIndex(currentIndex);
   }, [items, selectMode, onToggleSelect, onRangeSelect, onSelect]);
 
   if (items.length === 0) {
@@ -63,23 +122,27 @@ export function MediaGrid({ items, selectMode, selectedIds, onToggleSelect, onRa
 
   const renderGrid = (gridItems: MediaItem[]) => (
     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-1">
-      {gridItems.map(item => (
-        <MediaCard
-          key={item.id} item={item} selectMode={selectMode} selected={selectedIds?.has(item.id)}
-          onToggleSelect={(e) => handleItemClick(item, e)} onClick={() => onSelect?.(item)}
-          onDownload={onDownload ? () => onDownload(item) : undefined}
-          onDelete={onDelete ? () => onDelete(item) : undefined}
-          onAddToAlbum={onAddToAlbum ? () => onAddToAlbum(item) : undefined}
-        />
-      ))}
+      {gridItems.map(item => {
+        const idx = items.indexOf(item);
+        return (
+          <MediaCard
+            key={item.id} item={item} selectMode={selectMode} selected={selectedIds?.has(item.id)}
+            focused={selectMode && idx === focusIndex}
+            onToggleSelect={(e) => handleItemClick(item, e)} onClick={() => onSelect?.(item)}
+            onDownload={onDownload ? () => onDownload(item) : undefined}
+            onDelete={onDelete ? () => onDelete(item) : undefined}
+            onAddToAlbum={onAddToAlbum ? () => onAddToAlbum(item) : undefined}
+          />
+        );
+      })}
     </div>
   );
 
-  if (!groupByDate) return renderGrid(items);
+  if (!groupByDate) return <div ref={gridRef}>{renderGrid(items)}</div>;
 
   const groups = groupByMonth(items);
   return (
-    <div className="space-y-6">
+    <div ref={gridRef} className="space-y-6">
       {groups.map(([label, groupItems]) => (
         <div key={label}>
           <div className="sticky top-0 z-10 py-2 mb-2" style={{ background: 'var(--content-bg)' }}>

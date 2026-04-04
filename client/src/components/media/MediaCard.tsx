@@ -5,6 +5,7 @@ interface Props {
   item: MediaItem;
   selectMode?: boolean;
   selected?: boolean;
+  focused?: boolean;
   onToggleSelect?: (e: React.MouseEvent) => void;
   onClick?: () => void;
   onDownload?: () => void;
@@ -16,7 +17,7 @@ const statusBadge: Record<number, React.ReactNode> = {
   0: <Upload size={14} />, 1: <Clock size={14} />, 2: <Settings size={14} />, 3: <RefreshCw size={14} />, 5: <XCircle size={14} />,
 };
 
-export function MediaCard({ item, selectMode, selected, onToggleSelect, onClick, onDownload, onDelete, onAddToAlbum }: Props) {
+export function MediaCard({ item, selectMode, selected, focused, onToggleSelect, onClick, onDownload, onDelete, onAddToAlbum }: Props) {
   const badge = statusBadge[item.processingStatus];
   const isVideo = item.mediaType === 1;
 
@@ -30,7 +31,7 @@ export function MediaCard({ item, selectMode, selected, onToggleSelect, onClick,
       className="relative aspect-square rounded-md overflow-hidden cursor-pointer transition-all group"
       style={{
         background: 'var(--card-bg)',
-        outline: selected ? '2px solid var(--accent)' : 'none',
+        outline: selected ? '2px solid var(--accent)' : focused ? '2px solid rgba(138,180,248,0.5)' : 'none',
         outlineOffset: '-2px',
       }}
       onClick={handleClick}
