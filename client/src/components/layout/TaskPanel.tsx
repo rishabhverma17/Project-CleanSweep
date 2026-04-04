@@ -1,6 +1,6 @@
 import { useTaskStore, type BackgroundTask } from '../../stores/taskStore';
 import { useUploadStore } from '../../stores/uploadStore';
-import { Loader2, CheckCircle2, XCircle, X, ClipboardList, Upload } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, X, ClipboardList, Upload, RefreshCw } from 'lucide-react';
 
 function TaskItem({ task }: { task: BackgroundTask }) {
   return (
@@ -81,24 +81,58 @@ export function TaskPanel() {
           </div>
           <div className="overflow-y-auto flex-1">
             {uploadTotal > 0 && (
-              <div className="flex items-center gap-3 px-4 py-3" style={{ borderBottom: '1px solid var(--border)' }}>
-                <div className="flex-shrink-0">
-                  {isUploading ? <Upload size={18} className="animate-pulse" style={{ color: 'var(--accent)' }} /> : uploadFailed > 0 ? <XCircle size={18} style={{ color: '#f87171' }} /> : <CheckCircle2 size={18} style={{ color: '#4ade80' }} />}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm truncate" style={{ color: 'var(--text-primary)' }}>
-                    Uploading {uploadDone}/{uploadTotal} files
-                    {uploadFailed > 0 && <span className="text-red-400 ml-1">({uploadFailed} failed)</span>}
-                  </p>
-                  {isUploading && (
-                    <div className="mt-1 h-1 rounded-full overflow-hidden" style={{ background: 'var(--border)' }}>
-                      <div className="h-full rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%`, background: 'var(--accent)' }} />
-                    </div>
+              <div className="px-4 py-3" style={{ borderBottom: '1px solid var(--border)' }}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-medium flex items-center gap-1.5" style={{ color: 'var(--text-primary)' }}>
+                    <Upload size={14} style={{ color: 'var(--accent)' }} />
+                    Upload Status
+                    {isUploading && <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500" /></span>}
+                  </span>
+                  {!isUploading && uploadDone > 0 && (
+                    <button onClick={clearUploads} className="text-[10px] transition" style={{ color: 'var(--text-muted)' }}>Clear</button>
                   )}
                 </div>
-                <span className="text-xs flex-shrink-0" style={{ color: 'var(--text-muted)' }}>
-                  {isUploading ? `${uploadProgress}%` : 'Done'}
-                </span>
+                {/* Progress bar */}
+                <div className="mb-2">
+                  <div className="flex justify-between text-[10px] mb-0.5" style={{ color: 'var(--text-muted)' }}>
+                    <span>{uploadDone} / {uploadTotal} uploaded</span>
+                    <span>{uploadProgress}%</span>
+                  </div>
+                  <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--border)' }}>
+                    <div
+                      className="h-full rounded-full transition-all duration-500"
+                      style={{
+                        width: `${uploadProgress}%`,
+                        background: uploadFailed > 0 && !isUploading ? '#f87171' : 'var(--accent)',
+                      }}
+                    />
+                  </div>
+                </div>
+                {/* Stats grid */}
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>Queued</p>
+                    <p className="text-sm font-bold" style={{ color: summary.queued > 0 ? 'var(--accent)' : 'var(--text-primary)' }}>{summary.queued.toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>Uploading</p>
+                    <p className="text-sm font-bold" style={{ color: summary.uploading > 0 ? '#fbbf24' : 'var(--text-primary)' }}>{summary.uploading}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>Failed</p>
+                    <p className="text-sm font-bold" style={{ color: uploadFailed > 0 ? '#f87171' : 'var(--text-primary)' }}>{uploadFailed}</p>
+                  </div>
+                </div>
+                {/* Retry button */}
+                {uploadFailed > 0 && (
+                  <button
+                    onClick={() => useUploadStore.getState().retryAllFailed()}
+                    className="mt-2 w-full text-xs py-1.5 rounded-md transition flex items-center justify-center gap-1"
+                    style={{ background: 'rgba(138,180,248,0.1)', color: 'var(--accent)' }}
+                  >
+                    <RefreshCw size={12} /> Retry {uploadFailed} failed
+                  </button>
+                )}
               </div>
             )}
             {tasks.length === 0 && uploadTotal === 0 ? (
