@@ -27,11 +27,13 @@ interface UploadBatch {
   resolve?: (folderMediaMap: Map<string, string[]>) => void;
 }
 
-const MAX_CONCURRENT = 8;
+const MAX_CONCURRENT = 12;
 const MAX_RETRIES = 3;
 const INITIAL_RETRY_DELAY = 1000;
-const BATCH_SAS_SIZE = 50; // Request SAS URLs in batches of 50
-const PROGRESS_THROTTLE_MS = 500; // Throttle progress updates to 2/sec per file
+const BATCH_SAS_SIZE = 100; // Request SAS URLs in batches of 100
+const PROGRESS_THROTTLE_MS = 500;
+const COMPLETE_FLUSH_INTERVAL = 2000; // Flush complete queue every 2 seconds
+const COMPLETE_BATCH_SIZE = 20; // Max items per complete-batch call
 
 // --- Summary counters (derived outside Zustand to avoid re-renders per file) ---
 interface UploadSummary {
@@ -75,8 +77,68 @@ interface UploadStore {
 
 export const useUploadStore = create<UploadStore>((set, get) => {
 
-  // Efficient update: mutate the map entry and refresh summary
-  const updateItem = (id: string, update: Partial<UploadItem>) => {
+  // --- Batched completion queue ---
+  // Instead of calling completeUpload per file, queue mediaIds and flush in batches
+  const completeQueue: { mediaId: string; itemId: string }[] = [];
+  let flushTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const flushCompleteQueue = async () => {
+    if (completeQueue.length === 0) return;
+    const batch = completeQueue.splice(0, COMPLETE_BATCH_SIZE);
+    const mediaIds = batch.map(b => b.mediaId);
+    try {
+      await mediaApi.completeUploadBatch(mediaIds);
+    } catch {
+      // Fall back to individual calls
+      for (const { mediaId } of batch) {
+        try { await mediaApi.completeUpload(mediaId); } catch { }
+      }
+    }
+    // Mark items as done
+    for (const { mediaId, itemId } of batch) {
+      updateItem(itemId, { status: 'done', mediaId });
+      for (const [, cb] of get()._onFileCompleteCallbacks) {
+        const item = get()._itemMap.get(itemId);
+        try { cb(mediaId, item?.folderGroup); } catch { }
+      }
+    }
+    // If more in queue, schedule another flush
+    if (completeQueue.length > 0) scheduleFlush();
+  };
+
+  const scheduleFlush = () => {
+    if (flushTimer) return; // already scheduled
+    flushTimer = setTimeout(() => {
+      flushTimer = null;
+      flushCompleteQueue().then(() => {
+        // After flushing, process queue and check batches
+        get()._processQueue();
+        for (const batch of get().batches) checkBatchComplete(batch.id);
+        const s = get().summary;
+        if (s.queued === 0 && s.uploading === 0) set({ isUploading: false });
+      });
+    }, COMPLETE_FLUSH_INTERVAL);
+  };
+
+  const queueComplete = (mediaId: string, itemId: string) => {
+    updateItem(itemId, { status: 'completing', progress: 100 });
+    completeQueue.push({ mediaId, itemId });
+    // Flush immediately if batch is full
+    if (completeQueue.length >= COMPLETE_BATCH_SIZE) {
+      if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+      flushCompleteQueue().then(() => {
+        get()._processQueue();
+        for (const batch of get().batches) checkBatchComplete(batch.id);
+        const s = get().summary;
+        if (s.queued === 0 && s.uploading === 0) set({ isUploading: false });
+      });
+    } else {
+      scheduleFlush();
+    }
+  };
+
+  // Efficient update: mutate the map entry and refresh summary (hoisted for use in flush queue)
+  function updateItem(id: string, update: Partial<UploadItem>) {
     const state = get();
     const item = state._itemMap.get(id);
     if (!item) return;
@@ -85,7 +147,6 @@ export const useUploadStore = create<UploadStore>((set, get) => {
     Object.assign(item, update);
     const newStatus = item.status;
 
-    // Only trigger a Zustand set when status changes (not on every progress tick)
     if (oldStatus !== newStatus) {
       const summary = { ...state.summary };
       if (oldStatus === 'queued') summary.queued--;
@@ -100,7 +161,7 @@ export const useUploadStore = create<UploadStore>((set, get) => {
 
       set({ summary });
     }
-  };
+  }
 
   // Throttled progress update — avoids hammering Zustand at 60fps per file
   const updateProgress = (id: string, progress: number) => {
@@ -165,15 +226,8 @@ export const useUploadStore = create<UploadStore>((set, get) => {
 
       await uploadToBlob(uploadUrl, item.file, item.id);
 
-      updateItem(item.id, { status: 'completing', progress: 100 });
-      await mediaApi.completeUpload(mediaId);
-
-      updateItem(item.id, { status: 'done', mediaId });
-
-      // Notify per-file completion callbacks (for album assignment during upload)
-      for (const [, cb] of get()._onFileCompleteCallbacks) {
-        try { cb(mediaId, item.folderGroup); } catch { }
-      }
+      // Queue completion instead of awaiting — batched for speed
+      queueComplete(mediaId, item.id);
     } catch (err: any) {
       if (attempt < MAX_RETRIES) {
         const delay = Math.min(INITIAL_RETRY_DELAY * Math.pow(2, attempt), 30000);
@@ -211,7 +265,8 @@ export const useUploadStore = create<UploadStore>((set, get) => {
     return results;
   };
 
-  const checkBatchComplete = (batchId: string) => {
+  // Using function declaration (hoisted) so flushCompleteQueue can reference it
+  function checkBatchComplete(batchId: string) {
     const state = get();
     const batch = state.batches.find(b => b.id === batchId);
     if (!batch) return;
@@ -252,7 +307,7 @@ export const useUploadStore = create<UploadStore>((set, get) => {
     batch.resolve?.(folderMediaMap);
 
     set(state => ({ batches: state.batches.filter(b => b.id !== batchId) }));
-  };
+  }
 
   // The prefetch cache: uploadItemId → { mediaId, uploadUrl }
   let sasCache = new Map<string, { mediaId: string; uploadUrl: string }>();
@@ -263,12 +318,7 @@ export const useUploadStore = create<UploadStore>((set, get) => {
       try {
         updateItem(item.id, { status: 'uploading', mediaId: cached.mediaId, progress: 0 });
         await uploadToBlob(cached.uploadUrl, item.file, item.id);
-        updateItem(item.id, { status: 'completing', progress: 100 });
-        await mediaApi.completeUpload(cached.mediaId);
-        updateItem(item.id, { status: 'done', mediaId: cached.mediaId });
-        for (const [, cb] of get()._onFileCompleteCallbacks) {
-          try { cb(cached.mediaId, item.folderGroup); } catch { }
-        }
+        queueComplete(cached.mediaId, item.id);
         return;
       } catch (err: any) {
         if (attempt < MAX_RETRIES) {

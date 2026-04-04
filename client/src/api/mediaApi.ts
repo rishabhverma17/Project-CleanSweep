@@ -44,6 +44,11 @@ export const mediaApi = {
     return data;
   },
 
+  completeUploadBatch: async (mediaIds: string[]) => {
+    const { data } = await api.post('/api/media/upload/complete-batch', mediaIds.map(mediaId => ({ mediaId })));
+    return data;
+  },
+
   download: async (id: string) => {
     const { data } = await api.get<{ downloadUrl: string; fileName: string }>(`/api/media/${id}/download`);
     await forceDownload(data.downloadUrl, data.fileName);

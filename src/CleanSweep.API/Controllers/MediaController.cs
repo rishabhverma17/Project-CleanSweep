@@ -69,6 +69,21 @@ public class MediaController : ControllerBase
         return Ok(result);
     }
 
+    [HttpPost("upload/complete-batch")]
+    public async Task<ActionResult> CompleteUploadBatch([FromBody] List<UploadCompleteInput> inputs, CancellationToken ct)
+    {
+        if (inputs.Count > 50) return BadRequest(new { error = "Maximum 50 per batch." });
+        var correlationId = HttpContext.Items["CorrelationId"]?.ToString() ?? Guid.NewGuid().ToString("N");
+        var results = new List<UploadCompleteResult>();
+        foreach (var input in inputs)
+        {
+            try { results.Add(await _uploadService.CompleteUploadAsync(input.MediaId, correlationId, ct)); }
+            catch { /* skip failed ones */ }
+        }
+        await _notificationService.BroadcastMediaChangedAsync(ct);
+        return Ok(results);
+    }
+
     [HttpGet]
     public async Task<ActionResult<PaginatedResult<MediaItemDto>>> Browse(
         [FromQuery] int page = 1,
