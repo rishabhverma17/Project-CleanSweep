@@ -13,7 +13,8 @@ const SUPPORTED_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.heic', '.heif',
 function filterSupportedFiles(files: File[]): File[] {
   return files.filter(f => {
     const ext = '.' + f.name.split('.').pop()?.toLowerCase();
-    return (f.type.startsWith('image/') || f.type.startsWith('video/')) && SUPPORTED_EXTENSIONS.has(ext);
+    // Check extension only — browser MIME can be empty for folder uploads
+    return SUPPORTED_EXTENSIONS.has(ext);
   });
 }
 
@@ -111,43 +112,51 @@ export function MediaUploader({ onComplete }: Props) {
   const handleFolderUploadConfirm = async (createAlbums: boolean) => {
     if (!folderPreview) return;
     const { files, folderGroups } = folderPreview;
+    const currentAssignments = new Map(folderAssignments);
     setFolderPreview(null);
 
     if (!createAlbums) {
-      // Upload flat — no albums
       startUpload(files, undefined, undefined, onComplete);
       return;
     }
 
-    // Upload all files, then create/assign albums from folder structure
-    const folderMediaMap = await startUpload(files, folderGroups, undefined, onComplete);
-
-    if (folderMediaMap.size > 0) {
-      const newCount = [...folderAssignments.values()].filter(a => a.type === 'new').length;
-      const existingCount = [...folderAssignments.values()].filter(a => a.type === 'existing').length;
-      const label = [
-        newCount > 0 ? `Creating ${newCount} album(s)` : '',
-        existingCount > 0 ? `Adding to ${existingCount} existing album(s)` : '',
-      ].filter(Boolean).join(', ');
-
-      await runTask(label || 'Assigning media to albums', async () => {
-        for (const [folderName, mediaIds] of folderMediaMap) {
-          if (mediaIds.length === 0) continue;
-          const assignment = folderAssignments.get(folderName);
-          try {
-            if (assignment?.type === 'existing' && assignment.existingAlbumId) {
-              await albumApi.addMedia(assignment.existingAlbumId, mediaIds);
-            } else {
-              const album = await albumApi.create(folderName);
-              await albumApi.addMedia(album.id, mediaIds);
-            }
-          } catch (err) {
-            console.error(`Failed to assign album "${folderName}":`, err);
-          }
+    // Pre-create albums BEFORE upload starts so we have album IDs ready
+    const folderAlbumIds = new Map<string, string>(); // folderName → albumId
+    for (const folderName of folderGroups.keys()) {
+      const assignment = currentAssignments.get(folderName);
+      try {
+        if (assignment?.type === 'existing' && assignment.existingAlbumId) {
+          folderAlbumIds.set(folderName, assignment.existingAlbumId);
+        } else {
+          const album = await albumApi.create(folderName);
+          folderAlbumIds.set(folderName, album.id);
         }
-        queryClient.invalidateQueries({ queryKey: ['albums'] });
-      });
+      } catch (err) {
+        console.error(`Failed to create/resolve album "${folderName}":`, err);
+      }
     }
+
+    queryClient.invalidateQueries({ queryKey: ['albums'] });
+
+    // Create a callback that adds each completed file to its album immediately
+    const addedToAlbum = new Set<string>();
+    const onFileComplete = (mediaId: string, folderGroup?: string) => {
+      if (!folderGroup || addedToAlbum.has(mediaId)) return;
+      const albumId = folderAlbumIds.get(folderGroup);
+      if (!albumId) return;
+      addedToAlbum.add(mediaId);
+      // Fire-and-forget album assignment per file
+      albumApi.addMedia(albumId, [mediaId]).catch(err =>
+        console.error(`Failed to add ${mediaId} to album:`, err)
+      );
+    };
+
+    // Start upload with per-file callback
+    startUpload(files, folderGroups, undefined, () => {
+      queryClient.invalidateQueries({ queryKey: ['albums'] });
+      queryClient.invalidateQueries({ queryKey: ['album'] });
+      onComplete?.();
+    }, onFileComplete);
   };
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({

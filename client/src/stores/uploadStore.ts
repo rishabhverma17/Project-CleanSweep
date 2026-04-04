@@ -58,7 +58,8 @@ interface UploadStore {
     files: File[],
     folderGroups?: Map<string, File[]>,
     folderAssignments?: Map<string, FolderAlbumAssignment>,
-    onComplete?: () => void
+    onComplete?: () => void,
+    onFileComplete?: (mediaId: string, folderGroup?: string) => void
   ) => Promise<Map<string, string[]>>;
   retryUpload: (uploadId: string) => void;
   retryAllFailed: () => void;
@@ -68,6 +69,7 @@ interface UploadStore {
   // Internal
   _processQueue: () => void;
   _onCompleteCallbacks: Map<string, () => void>;
+  _onFileCompleteCallbacks: Map<string, (mediaId: string, folderGroup?: string) => void>;
   _progressTimers: Map<string, number>; // last progress update timestamp per id
 }
 
@@ -167,6 +169,11 @@ export const useUploadStore = create<UploadStore>((set, get) => {
       await mediaApi.completeUpload(mediaId);
 
       updateItem(item.id, { status: 'done', mediaId });
+
+      // Notify per-file completion callbacks (for album assignment during upload)
+      for (const [, cb] of get()._onFileCompleteCallbacks) {
+        try { cb(mediaId, item.folderGroup); } catch { }
+      }
     } catch (err: any) {
       if (attempt < MAX_RETRIES) {
         const delay = Math.min(INITIAL_RETRY_DELAY * Math.pow(2, attempt), 30000);
@@ -259,6 +266,9 @@ export const useUploadStore = create<UploadStore>((set, get) => {
         updateItem(item.id, { status: 'completing', progress: 100 });
         await mediaApi.completeUpload(cached.mediaId);
         updateItem(item.id, { status: 'done', mediaId: cached.mediaId });
+        for (const [, cb] of get()._onFileCompleteCallbacks) {
+          try { cb(cached.mediaId, item.folderGroup); } catch { }
+        }
         return;
       } catch (err: any) {
         if (attempt < MAX_RETRIES) {
@@ -282,6 +292,7 @@ export const useUploadStore = create<UploadStore>((set, get) => {
     isUploading: false,
     summary: { total: 0, done: 0, error: 0, uploading: 0, queued: 0 },
     _onCompleteCallbacks: new Map(),
+    _onFileCompleteCallbacks: new Map(),
     _progressTimers: new Map(),
 
     // For backward compat only — TaskPanel reads .uploads
@@ -295,7 +306,7 @@ export const useUploadStore = create<UploadStore>((set, get) => {
       return slice.map(id => state._itemMap.get(id)!).filter(Boolean);
     },
 
-    startUpload: (files, folderGroups, _folderAssignments, onComplete) => {
+    startUpload: (files, folderGroups, _folderAssignments, onComplete, onFileComplete) => {
       const batchId = crypto.randomUUID();
 
       const fileFolderLookup = new Map<File, string>();
@@ -316,6 +327,7 @@ export const useUploadStore = create<UploadStore>((set, get) => {
       return new Promise<Map<string, string[]>>((resolve) => {
         const batch: UploadBatch = { id: batchId, totalFiles: files.length, folderGroups, resolve };
         if (onComplete) get()._onCompleteCallbacks.set(batchId, onComplete);
+        if (onFileComplete) get()._onFileCompleteCallbacks.set(batchId, onFileComplete);
 
         const state = get();
         const newMap = new Map(state._itemMap);

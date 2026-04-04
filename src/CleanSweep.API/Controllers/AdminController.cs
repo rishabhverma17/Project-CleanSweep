@@ -20,6 +20,7 @@ public class AdminController : ControllerBase
     private readonly IBlobStorageService _blobService;
     private readonly StorageOptions _storageOptions;
     private readonly AppDbContext _db;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<AdminController> _logger;
 
     public AdminController(
@@ -28,6 +29,7 @@ public class AdminController : ControllerBase
         IBlobStorageService blobService,
         IOptions<StorageOptions> storageOptions,
         AppDbContext db,
+        IServiceScopeFactory scopeFactory,
         ILogger<AdminController> logger)
     {
         _userRepo = userRepo;
@@ -35,6 +37,7 @@ public class AdminController : ControllerBase
         _blobService = blobService;
         _storageOptions = storageOptions.Value;
         _db = db;
+        _scopeFactory = scopeFactory;
         _logger = logger;
     }
 
@@ -104,11 +107,12 @@ public class AdminController : ControllerBase
             return Ok(new { message = "No items to reprocess." });
 
         // Queue in background to avoid timeout
+        var scopeFactory = _scopeFactory;
         _ = Task.Run(async () =>
         {
             try
             {
-                using var scope = HttpContext.RequestServices.GetRequiredService<IServiceScopeFactory>().CreateScope();
+                using var scope = scopeFactory.CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
                 var queue = scope.ServiceProvider.GetRequiredService<IMediaProcessingQueue>();
 
@@ -157,11 +161,12 @@ public class AdminController : ControllerBase
         if (count == 0)
             return Ok(new { message = "No stuck items found." });
 
+        var scopeFactory2 = _scopeFactory;
         _ = Task.Run(async () =>
         {
             try
             {
-                using var scope = HttpContext.RequestServices.GetRequiredService<IServiceScopeFactory>().CreateScope();
+                using var scope = scopeFactory2.CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
                 var queue = scope.ServiceProvider.GetRequiredService<IMediaProcessingQueue>();
 
