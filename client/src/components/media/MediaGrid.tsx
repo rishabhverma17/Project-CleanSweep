@@ -1,3 +1,4 @@
+import { useRef, useCallback } from 'react';
 import type { MediaItem } from '../../types/media';
 import { MediaCard } from './MediaCard';
 import { Camera } from 'lucide-react';
@@ -7,6 +8,7 @@ interface Props {
   selectMode?: boolean;
   selectedIds?: Set<string>;
   onToggleSelect?: (id: string) => void;
+  onRangeSelect?: (ids: string[]) => void;
   onSelect?: (item: MediaItem) => void;
   onDownload?: (item: MediaItem) => void;
   onDelete?: (item: MediaItem) => void;
@@ -25,7 +27,30 @@ function groupByMonth(items: MediaItem[]): [string, MediaItem[]][] {
   return [...groups.entries()];
 }
 
-export function MediaGrid({ items, selectMode, selectedIds, onToggleSelect, onSelect, onDownload, onDelete, onAddToAlbum, groupByDate = true }: Props) {
+export function MediaGrid({ items, selectMode, selectedIds, onToggleSelect, onRangeSelect, onSelect, onDownload, onDelete, onAddToAlbum, groupByDate = true }: Props) {
+  const lastClickedIndexRef = useRef<number>(-1);
+
+  const handleItemClick = useCallback((item: MediaItem, e: React.MouseEvent) => {
+    if (!selectMode) {
+      onSelect?.(item);
+      return;
+    }
+
+    const currentIndex = items.indexOf(item);
+
+    // Shift+click: range select from last clicked to current
+    if (e.shiftKey && lastClickedIndexRef.current >= 0 && onRangeSelect) {
+      const start = Math.min(lastClickedIndexRef.current, currentIndex);
+      const end = Math.max(lastClickedIndexRef.current, currentIndex);
+      const rangeIds = items.slice(start, end + 1).map(i => i.id);
+      onRangeSelect(rangeIds);
+    } else {
+      onToggleSelect?.(item.id);
+    }
+
+    lastClickedIndexRef.current = currentIndex;
+  }, [items, selectMode, onToggleSelect, onRangeSelect, onSelect]);
+
   if (items.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20" style={{ color: 'var(--text-muted)' }}>
@@ -41,7 +66,7 @@ export function MediaGrid({ items, selectMode, selectedIds, onToggleSelect, onSe
       {gridItems.map(item => (
         <MediaCard
           key={item.id} item={item} selectMode={selectMode} selected={selectedIds?.has(item.id)}
-          onToggleSelect={() => onToggleSelect?.(item.id)} onClick={() => onSelect?.(item)}
+          onToggleSelect={(e) => handleItemClick(item, e)} onClick={() => onSelect?.(item)}
           onDownload={onDownload ? () => onDownload(item) : undefined}
           onDelete={onDelete ? () => onDelete(item) : undefined}
           onAddToAlbum={onAddToAlbum ? () => onAddToAlbum(item) : undefined}

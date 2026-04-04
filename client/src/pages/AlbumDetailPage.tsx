@@ -97,6 +97,14 @@ export function AlbumDetailPage() {
     });
   };
 
+  const rangeSelect = (ids: string[]) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      for (const id of ids) next.add(id);
+      return next;
+    });
+  };
+
   const handleRemoveFromAlbum = async (mediaId: string) => {
     if (!albumId) return;
     if (!confirm('Remove this photo from the album?')) return;
@@ -478,6 +486,7 @@ export function AlbumDetailPage() {
           selectMode={selectMode}
           selectedIds={selectedIds}
           onToggleSelect={toggleSelect}
+          onRangeSelect={rangeSelect}
           onSelect={item => !selectMode && setSelectedItem(item)}
           onDownload={handleDownload}
           onDelete={item => handleRemoveFromAlbum(item.id)}

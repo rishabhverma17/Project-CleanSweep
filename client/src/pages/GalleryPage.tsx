@@ -46,6 +46,14 @@ export function GalleryPage() {
     });
   };
 
+  const rangeSelect = (ids: string[]) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      for (const id of ids) next.add(id);
+      return next;
+    });
+  };
+
   const handleDelete = async (item: MediaItem) => {
     if (!confirm(`Delete "${item.fileName}"?`)) return;
     await runTask(`Deleting "${item.fileName}"`, async () => {
@@ -204,6 +212,7 @@ export function GalleryPage() {
         selectMode={selectMode}
         selectedIds={selectedIds}
         onToggleSelect={toggleSelect}
+        onRangeSelect={rangeSelect}
         onSelect={item => !selectMode && setSelectedItem(item)}
         onDownload={handleDownload}
         onDelete={handleDelete}

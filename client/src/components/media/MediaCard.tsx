@@ -5,7 +5,7 @@ interface Props {
   item: MediaItem;
   selectMode?: boolean;
   selected?: boolean;
-  onToggleSelect?: () => void;
+  onToggleSelect?: (e: React.MouseEvent) => void;
   onClick?: () => void;
   onDownload?: () => void;
   onDelete?: () => void;
@@ -20,8 +20,8 @@ export function MediaCard({ item, selectMode, selected, onToggleSelect, onClick,
   const badge = statusBadge[item.processingStatus];
   const isVideo = item.mediaType === 1;
 
-  const handleClick = () => {
-    if (selectMode) onToggleSelect?.();
+  const handleClick = (e: React.MouseEvent) => {
+    if (selectMode) onToggleSelect?.(e);
     else onClick?.();
   };
 

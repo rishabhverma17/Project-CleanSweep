@@ -51,6 +51,14 @@ export function FamilyMediaPage() {
     });
   };
 
+  const rangeSelect = (ids: string[]) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      for (const id of ids) next.add(id);
+      return next;
+    });
+  };
+
   const handleDownload = (item: MediaItem) => {
     runTask(`Downloading "${item.fileName}"`, () => mediaApi.download(item.id));
   };
@@ -136,6 +144,7 @@ export function FamilyMediaPage() {
         selectMode={selectMode}
         selectedIds={selectedIds}
         onToggleSelect={toggleSelect}
+        onRangeSelect={rangeSelect}
         onSelect={item => !selectMode && setSelectedItem(item)}
         onDownload={handleDownload}
         onDelete={handleUnshare}
