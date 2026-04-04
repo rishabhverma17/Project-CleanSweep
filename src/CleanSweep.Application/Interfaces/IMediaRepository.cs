@@ -12,5 +12,6 @@ public interface IMediaRepository
     Task<List<MediaItem>> GetStuckItemsAsync(TimeSpan stuckThreshold, int limit, CancellationToken ct = default);
     Task UpdateAsync(MediaItem item, CancellationToken ct = default);
     Task SoftDeleteAsync(Guid id, CancellationToken ct = default);
+    Task SoftDeleteBatchAsync(List<Guid> ids, CancellationToken ct = default);
     Task<long> GetUserStorageUsageAsync(string userId, CancellationToken ct = default);
 }

@@ -81,6 +81,13 @@ public class MediaRepository : IMediaRepository
         }
     }
 
+    public async Task SoftDeleteBatchAsync(List<Guid> ids, CancellationToken ct)
+    {
+        await _db.MediaItems
+            .Where(m => ids.Contains(m.Id) && !m.IsDeleted)
+            .ExecuteUpdateAsync(s => s.SetProperty(m => m.IsDeleted, true), ct);
+    }
+
     public async Task<long> GetUserStorageUsageAsync(string userId, CancellationToken ct)
         => await _db.MediaItems.Where(m => m.UserId == userId && !m.IsDeleted).SumAsync(m => m.FileSizeBytes, ct);
 }
