@@ -47,6 +47,19 @@ public class MediaController : ControllerBase
         return Ok(result);
     }
 
+    [HttpPost("upload/request-batch")]
+    public async Task<ActionResult<List<UploadRequest>>> RequestUploadBatch([FromBody] List<UploadRequestInput> inputs, CancellationToken ct)
+    {
+        if (inputs.Count > 100) return BadRequest(new { error = "Maximum 100 files per batch." });
+        var results = new List<UploadRequest>();
+        foreach (var input in inputs)
+        {
+            var result = await _uploadService.RequestUploadAsync(input.FileName, input.ContentType, input.SizeBytes, ct);
+            results.Add(result);
+        }
+        return Ok(results);
+    }
+
     [HttpPost("upload/complete")]
     public async Task<ActionResult<UploadCompleteResult>> CompleteUpload([FromBody] UploadCompleteInput input, CancellationToken ct)
     {

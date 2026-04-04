@@ -35,10 +35,10 @@ function TaskItem({ task }: { task: BackgroundTask }) {
 
 export function TaskPanel() {
   const { tasks, isOpen, toggle, clearDone } = useTaskStore();
-  const { uploads, isUploading, clearCompleted: clearUploads } = useUploadStore();
-  const uploadDone = uploads.filter(u => u.status === 'done').length;
-  const uploadTotal = uploads.length;
-  const uploadFailed = uploads.filter(u => u.status === 'error').length;
+  const { summary, isUploading, clearCompleted: clearUploads } = useUploadStore();
+  const uploadDone = summary.done;
+  const uploadTotal = summary.total;
+  const uploadFailed = summary.error;
   const uploadProgress = uploadTotal > 0 ? Math.round((uploadDone / uploadTotal) * 100) : 0;
 
   const runningCount = tasks.filter(t => t.status === 'running').length + (isUploading ? 1 : 0);

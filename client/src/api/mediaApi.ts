@@ -34,6 +34,11 @@ export const mediaApi = {
     return data;
   },
 
+  requestUploadBatch: async (requests: { fileName: string; contentType: string; sizeBytes: number }[]) => {
+    const { data } = await api.post<UploadRequestResponse[]>('/api/media/upload/request-batch', requests);
+    return data;
+  },
+
   completeUpload: async (mediaId: string) => {
     const { data } = await api.post('/api/media/upload/complete', { mediaId });
     return data;

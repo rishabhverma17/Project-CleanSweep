@@ -36,7 +36,7 @@ interface Props {
 
 export function MediaUploader({ onComplete }: Props) {
   const queryClient = useQueryClient();
-  const { uploads, startUpload, retryUpload, retryAllFailed, clearCompleted } = useUploadStore();
+  const { summary, startUpload, retryUpload, retryAllFailed, clearCompleted, getVisibleItems } = useUploadStore();
   const { runTask } = useTrackedTask();
   const folderInputRef = useRef<HTMLInputElement>(null);
   const [folderPreview, setFolderPreview] = useState<FolderPreview | null>(null);
@@ -44,6 +44,8 @@ export function MediaUploader({ onComplete }: Props) {
   const [folderAssignments, setFolderAssignments] = useState<Map<string, FolderAlbumAssignment>>(new Map());
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [albumSearch, setAlbumSearch] = useState('');
+  const [visibleOffset, setVisibleOffset] = useState(0);
+  const VISIBLE_LIMIT = 50;
 
   // Fetch existing albums when folder preview modal opens
   useEffect(() => {
@@ -70,8 +72,10 @@ export function MediaUploader({ onComplete }: Props) {
     setAlbumSearch('');
   };
 
-  const doneCount = uploads.filter(u => u.status === 'done').length;
-  const failedCount = uploads.filter(u => u.status === 'error').length;
+  const doneCount = summary.done;
+  const failedCount = summary.error;
+  const totalCount = summary.total;
+  const visibleItems = getVisibleItems(visibleOffset, VISIBLE_LIMIT);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const supported = filterSupportedFiles(acceptedFiles);
@@ -357,12 +361,12 @@ export function MediaUploader({ onComplete }: Props) {
       )}
 
       {/* Upload console */}
-      {uploads.length > 0 && (
+      {totalCount > 0 && (
         <div className="rounded-xl overflow-hidden" style={{ background: 'var(--card-bg)', border: '1px solid var(--border)' }}>
           {/* Console header */}
           <div className="flex items-center justify-between px-4 py-2.5" style={{ borderBottom: '1px solid var(--border)' }}>
             <h3 className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-              {doneCount} / {uploads.length} files uploaded
+              {doneCount} / {totalCount} files uploaded
               {failedCount > 0 && <span className="text-red-400 ml-2">({failedCount} failed)</span>}
             </h3>
             <div className="flex gap-2">
@@ -378,9 +382,18 @@ export function MediaUploader({ onComplete }: Props) {
               )}
             </div>
           </div>
-          {/* Scrollable file list */}
+          {/* Overall progress bar */}
+          {totalCount > 0 && (
+            <div className="h-1" style={{ background: 'var(--sidebar-bg)' }}>
+              <div
+                className="h-full bg-blue-500 transition-all duration-500"
+                style={{ width: `${Math.round((doneCount / totalCount) * 100)}%` }}
+              />
+            </div>
+          )}
+          {/* Virtualized file list — only renders visible window */}
           <div className="overflow-y-auto space-y-px" style={{ maxHeight: '400px' }}>
-            {uploads.map((upload) => (
+            {visibleItems.map((upload) => (
               <div key={upload.id} className="flex items-center gap-3 px-4 py-2" style={{ background: 'transparent' }}>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
@@ -404,7 +417,7 @@ export function MediaUploader({ onComplete }: Props) {
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <span className="text-xs whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>
                     {upload.status === 'queued' && 'Queued'}
-                    {upload.status === 'uploading' && `${upload.progress}%`}
+                    {(upload.status === 'uploading' || upload.status === 'requesting') && `${upload.progress}%`}
                     {upload.status === 'completing' && 'Finalizing...'}
                     {upload.status === 'done' && <CheckCircle2 size={14} style={{ color: '#4ade80' }} />}
                     {upload.status === 'error' && <XCircle size={14} style={{ color: '#f87171' }} />}
@@ -421,6 +434,30 @@ export function MediaUploader({ onComplete }: Props) {
               </div>
             ))}
           </div>
+          {/* Pagination for large uploads */}
+          {totalCount > VISIBLE_LIMIT && (
+            <div className="flex items-center justify-between px-4 py-2 text-xs" style={{ borderTop: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+              <span>Showing {visibleOffset + 1}–{Math.min(visibleOffset + VISIBLE_LIMIT, totalCount)} of {totalCount}</span>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setVisibleOffset(Math.max(0, visibleOffset - VISIBLE_LIMIT))}
+                  disabled={visibleOffset === 0}
+                  className="px-2 py-1 rounded transition disabled:opacity-30"
+                  style={{ background: 'var(--sidebar-bg)' }}
+                >
+                  ← Prev
+                </button>
+                <button
+                  onClick={() => setVisibleOffset(Math.min(totalCount - 1, visibleOffset + VISIBLE_LIMIT))}
+                  disabled={visibleOffset + VISIBLE_LIMIT >= totalCount}
+                  className="px-2 py-1 rounded transition disabled:opacity-30"
+                  style={{ background: 'var(--sidebar-bg)' }}
+                >
+                  Next →
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

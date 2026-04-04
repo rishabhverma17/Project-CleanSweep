@@ -1,11 +1,13 @@
 import { create } from 'zustand';
 import { mediaApi } from '../api/mediaApi';
 
+export type UploadStatus = 'queued' | 'requesting' | 'uploading' | 'completing' | 'done' | 'error';
+
 export interface UploadItem {
   id: string;
   file: File;
   progress: number;
-  status: 'queued' | 'uploading' | 'completing' | 'done' | 'error';
+  status: UploadStatus;
   mediaId?: string;
   error?: string;
   folderGroup?: string;
@@ -25,14 +27,32 @@ interface UploadBatch {
   resolve?: (folderMediaMap: Map<string, string[]>) => void;
 }
 
-const MAX_CONCURRENT = 3;
+const MAX_CONCURRENT = 8;
 const MAX_RETRIES = 3;
 const INITIAL_RETRY_DELAY = 1000;
+const BATCH_SAS_SIZE = 50; // Request SAS URLs in batches of 50
+const PROGRESS_THROTTLE_MS = 500; // Throttle progress updates to 2/sec per file
+
+// --- Summary counters (derived outside Zustand to avoid re-renders per file) ---
+interface UploadSummary {
+  total: number;
+  done: number;
+  error: number;
+  uploading: number;
+  queued: number;
+}
 
 interface UploadStore {
-  uploads: UploadItem[];
+  // We store items in a Map for O(1) lookups instead of scanning 10K arrays
+  _itemMap: Map<string, UploadItem>;
+  _itemOrder: string[]; // ordered ids for display
   batches: UploadBatch[];
   isUploading: boolean;
+  summary: UploadSummary;
+
+  // Public selectors
+  getVisibleItems: (offset: number, limit: number) => UploadItem[];
+  uploads: UploadItem[]; // kept for backward compat with TaskPanel — returns summary only
 
   startUpload: (
     files: File[],
@@ -47,15 +67,54 @@ interface UploadStore {
 
   // Internal
   _processQueue: () => void;
-  _activeCount: number;
   _onCompleteCallbacks: Map<string, () => void>;
+  _progressTimers: Map<string, number>; // last progress update timestamp per id
 }
 
 export const useUploadStore = create<UploadStore>((set, get) => {
-  const updateUpload = (id: string, update: Partial<UploadItem>) => {
-    set(state => ({
-      uploads: state.uploads.map(u => u.id === id ? { ...u, ...update } : u),
-    }));
+
+  // Efficient update: mutate the map entry and refresh summary
+  const updateItem = (id: string, update: Partial<UploadItem>) => {
+    const state = get();
+    const item = state._itemMap.get(id);
+    if (!item) return;
+
+    const oldStatus = item.status;
+    Object.assign(item, update);
+    const newStatus = item.status;
+
+    // Only trigger a Zustand set when status changes (not on every progress tick)
+    if (oldStatus !== newStatus) {
+      const summary = { ...state.summary };
+      if (oldStatus === 'queued') summary.queued--;
+      else if (oldStatus === 'uploading' || oldStatus === 'requesting' || oldStatus === 'completing') summary.uploading--;
+      else if (oldStatus === 'done') summary.done--;
+      else if (oldStatus === 'error') summary.error--;
+
+      if (newStatus === 'queued') summary.queued++;
+      else if (newStatus === 'uploading' || newStatus === 'requesting' || newStatus === 'completing') summary.uploading++;
+      else if (newStatus === 'done') summary.done++;
+      else if (newStatus === 'error') summary.error++;
+
+      set({ summary });
+    }
+  };
+
+  // Throttled progress update — avoids hammering Zustand at 60fps per file
+  const updateProgress = (id: string, progress: number) => {
+    const state = get();
+    const item = state._itemMap.get(id);
+    if (!item) return;
+    const now = Date.now();
+    const last = state._progressTimers.get(id) || 0;
+    if (progress < 100 && now - last < PROGRESS_THROTTLE_MS) {
+      item.progress = progress; // silent update (no re-render)
+      return;
+    }
+    state._progressTimers.set(id, now);
+    item.progress = progress;
+    // Trigger minimal re-render for visible progress
+    set({});
   };
 
   const uploadToBlob = async (sasUrl: string, file: File, uploadId: string, attempt = 0): Promise<void> => {
@@ -68,7 +127,7 @@ export const useUploadStore = create<UploadStore>((set, get) => {
 
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) {
-            updateUpload(uploadId, { progress: Math.round((e.loaded / e.total) * 100) });
+            updateProgress(uploadId, Math.round((e.loaded / e.total) * 100));
           }
         };
 
@@ -90,28 +149,59 @@ export const useUploadStore = create<UploadStore>((set, get) => {
 
   const uploadFile = async (item: UploadItem, attempt = 0) => {
     try {
-      updateUpload(item.id, { status: 'uploading', progress: 0 });
+      updateItem(item.id, { status: 'requesting', progress: 0 });
 
-      const { mediaId, uploadUrl } = await mediaApi.requestUpload(
-        item.file.name, item.file.type, item.file.size
-      );
-      updateUpload(item.id, { mediaId });
+      // Try batch SAS if available, fall back to single
+      let mediaId: string;
+      let uploadUrl: string;
+
+      const resp = await mediaApi.requestUpload(item.file.name, item.file.type, item.file.size);
+      mediaId = resp.mediaId;
+      uploadUrl = resp.uploadUrl;
+
+      updateItem(item.id, { mediaId, status: 'uploading' });
 
       await uploadToBlob(uploadUrl, item.file, item.id);
 
-      updateUpload(item.id, { status: 'completing', progress: 100 });
+      updateItem(item.id, { status: 'completing', progress: 100 });
       await mediaApi.completeUpload(mediaId);
 
-      updateUpload(item.id, { status: 'done', mediaId });
+      updateItem(item.id, { status: 'done', mediaId });
     } catch (err: any) {
       if (attempt < MAX_RETRIES) {
         const delay = Math.min(INITIAL_RETRY_DELAY * Math.pow(2, attempt), 30000);
-        updateUpload(item.id, { status: 'uploading', progress: 0, error: `Retry ${attempt + 1}/${MAX_RETRIES}...` });
+        updateItem(item.id, { status: 'uploading', progress: 0, error: `Retry ${attempt + 1}/${MAX_RETRIES}...` });
         await new Promise(r => setTimeout(r, delay));
         return uploadFile(item, attempt + 1);
       }
-      updateUpload(item.id, { status: 'error', error: err.message || 'Upload failed' });
+      updateItem(item.id, { status: 'error', error: err.message || 'Upload failed' });
     }
+  };
+
+  // Pre-request SAS URLs in batches to reduce round-trips
+  const prefetchSasUrls = async (items: UploadItem[]): Promise<Map<string, { mediaId: string; uploadUrl: string }>> => {
+    const results = new Map<string, { mediaId: string; uploadUrl: string }>();
+
+    // Process in batches
+    for (let i = 0; i < items.length; i += BATCH_SAS_SIZE) {
+      const batch = items.slice(i, i + BATCH_SAS_SIZE);
+      const requests = batch.map(item => ({
+        fileName: item.file.name,
+        contentType: item.file.type,
+        sizeBytes: item.file.size,
+      }));
+
+      try {
+        const responses = await mediaApi.requestUploadBatch(requests);
+        for (let j = 0; j < batch.length && j < responses.length; j++) {
+          results.set(batch[j].id, responses[j]);
+        }
+      } catch {
+        // Batch endpoint not available — fall back to individual requests
+        return results;
+      }
+    }
+    return results;
   };
 
   const checkBatchComplete = (batchId: string) => {
@@ -119,55 +209,95 @@ export const useUploadStore = create<UploadStore>((set, get) => {
     const batch = state.batches.find(b => b.id === batchId);
     if (!batch) return;
 
-    const batchUploads = state.uploads.filter(u =>
-      batch.folderGroups
-        ? [...batch.folderGroups.values()].some(files => files.some(f => f === u.file))
-        : false
-    );
+    const batchUploads: UploadItem[] = [];
+    if (batch.folderGroups) {
+      for (const files of batch.folderGroups.values()) {
+        for (const file of files) {
+          for (const item of state._itemMap.values()) {
+            if (item.file === file) { batchUploads.push(item); break; }
+          }
+        }
+      }
+    }
 
-    // Check if all uploads in batch are done or errored
     const allFinished = batchUploads.length > 0 && batchUploads.every(u => u.status === 'done' || u.status === 'error');
     if (!allFinished) return;
 
-    // Build folder → mediaIds map
     const folderMediaMap = new Map<string, string[]>();
     if (batch.folderGroups) {
       for (const [folder, files] of batch.folderGroups) {
         const mediaIds: string[] = [];
         for (const file of files) {
-          const upload = state.uploads.find(u => u.file === file && u.status === 'done' && u.mediaId);
-          if (upload?.mediaId) mediaIds.push(upload.mediaId);
+          for (const item of state._itemMap.values()) {
+            if (item.file === file && item.status === 'done' && item.mediaId) {
+              mediaIds.push(item.mediaId);
+              break;
+            }
+          }
         }
         if (mediaIds.length > 0) folderMediaMap.set(folder, mediaIds);
       }
     }
 
-    // Call onComplete callback
     const callback = state._onCompleteCallbacks.get(batchId);
-    if (callback) {
-      callback();
-      state._onCompleteCallbacks.delete(batchId);
-    }
+    if (callback) { callback(); state._onCompleteCallbacks.delete(batchId); }
 
     batch.resolve?.(folderMediaMap);
 
-    // Remove batch
-    set(state => ({
-      batches: state.batches.filter(b => b.id !== batchId),
-    }));
+    set(state => ({ batches: state.batches.filter(b => b.id !== batchId) }));
+  };
+
+  // The prefetch cache: uploadItemId → { mediaId, uploadUrl }
+  let sasCache = new Map<string, { mediaId: string; uploadUrl: string }>();
+
+  const uploadFileWithCache = async (item: UploadItem, attempt = 0) => {
+    const cached = sasCache.get(item.id);
+    if (cached) {
+      try {
+        updateItem(item.id, { status: 'uploading', mediaId: cached.mediaId, progress: 0 });
+        await uploadToBlob(cached.uploadUrl, item.file, item.id);
+        updateItem(item.id, { status: 'completing', progress: 100 });
+        await mediaApi.completeUpload(cached.mediaId);
+        updateItem(item.id, { status: 'done', mediaId: cached.mediaId });
+        return;
+      } catch (err: any) {
+        if (attempt < MAX_RETRIES) {
+          const delay = Math.min(INITIAL_RETRY_DELAY * Math.pow(2, attempt), 30000);
+          updateItem(item.id, { status: 'uploading', progress: 0, error: `Retry ${attempt + 1}/${MAX_RETRIES}...` });
+          await new Promise(r => setTimeout(r, delay));
+          return uploadFileWithCache(item, attempt + 1);
+        }
+        updateItem(item.id, { status: 'error', error: err.message || 'Upload failed' });
+        return;
+      }
+    }
+    // No cache hit — fall back to individual request
+    return uploadFile(item, attempt);
   };
 
   return {
-    uploads: [],
+    _itemMap: new Map(),
+    _itemOrder: [],
     batches: [],
     isUploading: false,
-    _activeCount: 0,
+    summary: { total: 0, done: 0, error: 0, uploading: 0, queued: 0 },
     _onCompleteCallbacks: new Map(),
+    _progressTimers: new Map(),
 
-    startUpload: (files, folderGroups, folderAssignments, onComplete) => {
+    // For backward compat only — TaskPanel reads .uploads
+    get uploads() {
+      return [] as UploadItem[];
+    },
+
+    getVisibleItems: (offset: number, limit: number) => {
+      const state = get();
+      const slice = state._itemOrder.slice(offset, offset + limit);
+      return slice.map(id => state._itemMap.get(id)!).filter(Boolean);
+    },
+
+    startUpload: (files, folderGroups, _folderAssignments, onComplete) => {
       const batchId = crypto.randomUUID();
 
-      // Build file → folder lookup
       const fileFolderLookup = new Map<File, string>();
       if (folderGroups) {
         for (const [folder, groupFiles] of folderGroups) {
@@ -175,7 +305,7 @@ export const useUploadStore = create<UploadStore>((set, get) => {
         }
       }
 
-      const items: UploadItem[] = files.map(file => ({
+      const newItems: UploadItem[] = files.map(file => ({
         id: crypto.randomUUID(),
         file,
         progress: 0,
@@ -184,49 +314,71 @@ export const useUploadStore = create<UploadStore>((set, get) => {
       }));
 
       return new Promise<Map<string, string[]>>((resolve) => {
-        const batch: UploadBatch = {
-          id: batchId,
-          totalFiles: files.length,
-          folderGroups,
-          folderAssignments,
-          resolve,
-        };
+        const batch: UploadBatch = { id: batchId, totalFiles: files.length, folderGroups, resolve };
+        if (onComplete) get()._onCompleteCallbacks.set(batchId, onComplete);
 
-        if (onComplete) {
-          get()._onCompleteCallbacks.set(batchId, onComplete);
+        const state = get();
+        const newMap = new Map(state._itemMap);
+        const newOrder = [...state._itemOrder];
+        for (const item of newItems) {
+          newMap.set(item.id, item);
+          newOrder.push(item.id);
         }
 
-        set(state => ({
-          uploads: [...state.uploads, ...items],
+        sasCache = new Map();
+
+        set({
+          _itemMap: newMap,
+          _itemOrder: newOrder,
           batches: [...state.batches, batch],
           isUploading: true,
-        }));
+          summary: {
+            total: state.summary.total + newItems.length,
+            done: state.summary.done,
+            error: state.summary.error,
+            uploading: state.summary.uploading,
+            queued: state.summary.queued + newItems.length,
+          },
+        });
 
-        // Start processing
+        // Prefetch SAS URLs in background, then start queue
+        prefetchSasUrls(newItems).then(cache => {
+          sasCache = cache;
+          get()._processQueue();
+        }).catch(() => {
+          get()._processQueue();
+        });
+
+        // Start processing immediately (first items will use individual SAS requests)
         get()._processQueue();
       });
     },
 
     _processQueue: () => {
       const state = get();
-      const queued = state.uploads.filter(u => u.status === 'queued');
-      let active = state.uploads.filter(u => u.status === 'uploading' || u.status === 'completing').length;
+      let active = 0;
+      for (const item of state._itemMap.values()) {
+        if (item.status === 'uploading' || item.status === 'completing' || item.status === 'requesting') active++;
+      }
+
+      const queued: UploadItem[] = [];
+      for (const id of state._itemOrder) {
+        if (active >= MAX_CONCURRENT) break;
+        const item = state._itemMap.get(id);
+        if (item && item.status === 'queued') {
+          queued.push(item);
+          active++;
+        }
+      }
 
       for (const item of queued) {
-        if (active >= MAX_CONCURRENT) break;
-        active++;
-
-        uploadFile(item).then(() => {
-          // After each upload completes, process more and check batches
+        uploadFileWithCache(item).then(() => {
           get()._processQueue();
-          for (const batch of get().batches) {
-            checkBatchComplete(batch.id);
-          }
+          for (const batch of get().batches) checkBatchComplete(batch.id);
 
-          // Check if all uploads are done
-          const current = get();
-          const stillActive = current.uploads.some(u => u.status === 'queued' || u.status === 'uploading' || u.status === 'completing');
-          if (!stillActive) {
+          // Check if all done
+          const s = get().summary;
+          if (s.queued === 0 && s.uploading === 0) {
             set({ isUploading: false });
           }
         });
@@ -234,33 +386,53 @@ export const useUploadStore = create<UploadStore>((set, get) => {
     },
 
     retryUpload: (uploadId) => {
-      const item = get().uploads.find(u => u.id === uploadId);
+      const item = get()._itemMap.get(uploadId);
       if (!item || item.status !== 'error') return;
-      updateUpload(uploadId, { status: 'queued', progress: 0, error: undefined });
+      updateItem(uploadId, { status: 'queued', progress: 0, error: undefined });
       set({ isUploading: true });
       get()._processQueue();
     },
 
     retryAllFailed: () => {
-      const state = get();
-      const failed = state.uploads.filter(u => u.status === 'error');
-      for (const item of failed) {
-        updateUpload(item.id, { status: 'queued', progress: 0, error: undefined });
+      let count = 0;
+      for (const item of get()._itemMap.values()) {
+        if (item.status === 'error') {
+          updateItem(item.id, { status: 'queued', progress: 0, error: undefined });
+          count++;
+        }
       }
-      if (failed.length > 0) {
-        set({ isUploading: true });
-        get()._processQueue();
-      }
+      if (count > 0) { set({ isUploading: true }); get()._processQueue(); }
     },
 
     clearCompleted: () => {
-      set(state => ({
-        uploads: state.uploads.filter(u => u.status !== 'done'),
-      }));
+      const state = get();
+      const newMap = new Map(state._itemMap);
+      const newOrder: string[] = [];
+      let removedDone = 0;
+      for (const id of state._itemOrder) {
+        const item = newMap.get(id);
+        if (item && item.status === 'done') {
+          newMap.delete(id);
+          removedDone++;
+        } else {
+          newOrder.push(id);
+        }
+      }
+      set({
+        _itemMap: newMap,
+        _itemOrder: newOrder,
+        summary: { ...state.summary, total: state.summary.total - removedDone, done: 0 },
+      });
     },
 
     clearAll: () => {
-      set({ uploads: [], batches: [], isUploading: false });
+      set({
+        _itemMap: new Map(),
+        _itemOrder: [],
+        batches: [],
+        isUploading: false,
+        summary: { total: 0, done: 0, error: 0, uploading: 0, queued: 0 },
+      });
     },
   };
 });
