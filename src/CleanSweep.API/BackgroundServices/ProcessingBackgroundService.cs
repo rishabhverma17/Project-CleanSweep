@@ -29,7 +29,7 @@ public class ProcessingBackgroundService : BackgroundService
         _storageOptions = storageOptions.Value;
     }
 
-    private const int MaxConcurrentProcessing = 4;
+    private const int MaxConcurrentProcessing = 6;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
