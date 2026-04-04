@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { groupFilesByFolder, getTopLevelFolderName } from '../../hooks/useUpload';
 import { useUploadStore } from '../../stores/uploadStore';
 import { albumApi } from '../../api/albumApi';
-import { FolderOpen, FolderUp, RefreshCw, CheckCircle2, XCircle, Album, ArrowRight, ChevronDown, Search } from 'lucide-react';
+import { FolderOpen, FolderUp, RefreshCw, Album, ArrowRight, ChevronDown, Search } from 'lucide-react';
 import type { Album as AlbumType } from '../../types/media';
 
 const SUPPORTED_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.heic', '.heif', '.mp4', '.mov', '.m4v']);
@@ -36,15 +36,13 @@ interface Props {
 
 export function MediaUploader({ onComplete }: Props) {
   const queryClient = useQueryClient();
-  const { summary, startUpload, retryUpload, retryAllFailed, clearCompleted, getVisibleItems } = useUploadStore();
+  const { summary, startUpload, retryAllFailed, clearCompleted } = useUploadStore();
   const folderInputRef = useRef<HTMLInputElement>(null);
   const [folderPreview, setFolderPreview] = useState<FolderPreview | null>(null);
   const [existingAlbums, setExistingAlbums] = useState<AlbumType[]>([]);
   const [folderAssignments, setFolderAssignments] = useState<Map<string, FolderAlbumAssignment>>(new Map());
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [albumSearch, setAlbumSearch] = useState('');
-  const [visibleOffset, setVisibleOffset] = useState(0);
-  const VISIBLE_LIMIT = 50;
 
   // Fetch existing albums when folder preview modal opens
   useEffect(() => {
@@ -74,7 +72,6 @@ export function MediaUploader({ onComplete }: Props) {
   const doneCount = summary.done;
   const failedCount = summary.error;
   const totalCount = summary.total;
-  const visibleItems = getVisibleItems(visibleOffset, VISIBLE_LIMIT);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const supported = filterSupportedFiles(acceptedFiles);
@@ -367,104 +364,71 @@ export function MediaUploader({ onComplete }: Props) {
         </div>
       )}
 
-      {/* Upload console */}
+      {/* Upload Status Card */}
       {totalCount > 0 && (
-        <div className="rounded-xl overflow-hidden" style={{ background: 'var(--card-bg)', border: '1px solid var(--border)' }}>
-          {/* Console header */}
-          <div className="flex items-center justify-between px-4 py-2.5" style={{ borderBottom: '1px solid var(--border)' }}>
-            <h3 className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-              {doneCount} / {totalCount} files uploaded
-              {failedCount > 0 && <span className="text-red-400 ml-2">({failedCount} failed)</span>}
-            </h3>
-            <div className="flex gap-2">
-              {failedCount > 0 && (
-                <button onClick={retryAllFailed} className="text-xs px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-white transition flex items-center gap-1">
-                  <RefreshCw size={12} /> Retry failed ({failedCount})
-                </button>
-              )}
-              {doneCount > 0 && (
-                <button onClick={clearCompleted} className="text-xs px-3 py-1 rounded transition" style={{ background: 'var(--sidebar-bg)', color: 'var(--text-muted)' }}>
-                  Clear done
-                </button>
-              )}
-            </div>
-          </div>
-          {/* Overall progress bar */}
-          {totalCount > 0 && (
-            <div className="h-1" style={{ background: 'var(--sidebar-bg)' }}>
-              <div
-                className="h-full bg-blue-500 transition-all duration-500"
-                style={{ width: `${Math.round((doneCount / totalCount) * 100)}%` }}
-              />
-            </div>
-          )}
-          {/* Virtualized file list — only renders visible window */}
-          <div className="overflow-y-auto space-y-px" style={{ maxHeight: '400px' }}>
-            {visibleItems.map((upload) => (
-              <div key={upload.id} className="flex items-center gap-3 px-4 py-2" style={{ background: 'transparent' }}>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm truncate" style={{ color: 'var(--text-primary)' }}>{upload.file.name}</p>
-                    {upload.folderGroup && (
-                      <span className="text-xs px-1.5 py-0.5 rounded flex-shrink-0" style={{ background: 'rgba(138,180,248,0.1)', color: 'var(--accent)' }}>
-                        {upload.folderGroup}
-                      </span>
-                    )}
-                  </div>
-                  <div className="mt-1 h-1 rounded-full overflow-hidden" style={{ background: 'var(--sidebar-bg)' }}>
-                    <div
-                      className={`h-full rounded-full transition-all duration-300 ${
-                        upload.status === 'error' ? 'bg-red-500' :
-                        upload.status === 'done' ? 'bg-green-500' : 'bg-blue-500'
-                      }`}
-                      style={{ width: `${upload.progress}%` }}
-                    />
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <span className="text-xs whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>
-                    {upload.status === 'queued' && 'Queued'}
-                    {(upload.status === 'uploading' || upload.status === 'requesting') && `${upload.progress}%`}
-                    {upload.status === 'completing' && 'Finalizing...'}
-                    {upload.status === 'done' && <CheckCircle2 size={14} style={{ color: '#4ade80' }} />}
-                    {upload.status === 'error' && <XCircle size={14} style={{ color: '#f87171' }} />}
+        <div className="rounded-xl overflow-hidden" style={{ background: 'var(--card-bg)', border: `1px solid ${summary.uploading > 0 ? 'var(--accent)' : 'var(--border)'}` }}>
+          <div className="p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+                Upload Status
+                {summary.uploading > 0 && (
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-blue-500" />
                   </span>
-                  {upload.status === 'error' && (
-                    <button
-                      onClick={() => retryUpload(upload.id)}
-                      className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-700 rounded text-white transition"
-                    >
-                      Retry
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-          {/* Pagination for large uploads */}
-          {totalCount > VISIBLE_LIMIT && (
-            <div className="flex items-center justify-between px-4 py-2 text-xs" style={{ borderTop: '1px solid var(--border)', color: 'var(--text-muted)' }}>
-              <span>Showing {visibleOffset + 1}–{Math.min(visibleOffset + VISIBLE_LIMIT, totalCount)} of {totalCount}</span>
+                )}
+              </h3>
               <div className="flex gap-2">
-                <button
-                  onClick={() => setVisibleOffset(Math.max(0, visibleOffset - VISIBLE_LIMIT))}
-                  disabled={visibleOffset === 0}
-                  className="px-2 py-1 rounded transition disabled:opacity-30"
-                  style={{ background: 'var(--sidebar-bg)' }}
-                >
-                  ← Prev
-                </button>
-                <button
-                  onClick={() => setVisibleOffset(Math.min(totalCount - 1, visibleOffset + VISIBLE_LIMIT))}
-                  disabled={visibleOffset + VISIBLE_LIMIT >= totalCount}
-                  className="px-2 py-1 rounded transition disabled:opacity-30"
-                  style={{ background: 'var(--sidebar-bg)' }}
-                >
-                  Next →
-                </button>
+                {failedCount > 0 && (
+                  <button onClick={retryAllFailed} className="text-xs px-3 py-1 rounded transition flex items-center gap-1" style={{ background: 'rgba(138,180,248,0.1)', color: 'var(--accent)' }}>
+                    <RefreshCw size={12} /> Retry {failedCount}
+                  </button>
+                )}
+                {doneCount > 0 && summary.uploading === 0 && summary.queued === 0 && (
+                  <button onClick={clearCompleted} className="text-xs px-3 py-1 rounded transition" style={{ color: 'var(--text-muted)' }}>
+                    Clear
+                  </button>
+                )}
               </div>
             </div>
-          )}
+
+            {/* Progress bar */}
+            <div className="mb-4">
+              <div className="flex justify-between text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
+                <span>{doneCount} / {totalCount} uploaded</span>
+                <span>{totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0}%</span>
+              </div>
+              <div className="h-2 rounded-full overflow-hidden" style={{ background: 'var(--border)' }}>
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{
+                    width: `${totalCount > 0 ? (doneCount / totalCount) * 100 : 0}%`,
+                    background: failedCount > 0 && summary.uploading === 0 ? '#f87171' : 'var(--accent)',
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Stats grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div>
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Queued</p>
+                <p className="text-xl font-bold" style={{ color: summary.queued > 0 ? 'var(--accent)' : 'var(--text-primary)' }}>{summary.queued.toLocaleString()}</p>
+              </div>
+              <div>
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Uploading</p>
+                <p className="text-xl font-bold" style={{ color: summary.uploading > 0 ? '#fbbf24' : 'var(--text-primary)' }}>{summary.uploading}</p>
+              </div>
+              <div>
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Complete</p>
+                <p className="text-xl font-bold" style={{ color: doneCount > 0 ? '#4ade80' : 'var(--text-primary)' }}>{doneCount.toLocaleString()}</p>
+              </div>
+              <div>
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Failed</p>
+                <p className="text-xl font-bold" style={{ color: failedCount > 0 ? '#f87171' : 'var(--text-primary)' }}>{failedCount}</p>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
