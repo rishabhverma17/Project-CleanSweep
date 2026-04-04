@@ -4,12 +4,25 @@ import axios from 'axios';
 import type { MediaItem, Album } from '../types/media';
 import { Calendar, HardDrive, Download, AlertCircle, Loader2, FolderOpen } from 'lucide-react';
 
-interface SharedData {
-  type: 'media' | 'album' | 'unknown';
+interface SharedMediaData {
+  type: 'media';
   expiresAt: string;
-  media?: MediaItem | MediaItem[];
-  album?: Album;
+  media: MediaItem;
 }
+
+interface SharedAlbumData {
+  type: 'album';
+  expiresAt: string;
+  album: Album;
+  media: MediaItem[];
+}
+
+interface SharedUnknownData {
+  type: 'unknown';
+  expiresAt: string;
+}
+
+type SharedData = SharedMediaData | SharedAlbumData | SharedUnknownData;
 
 export function SharedPage() {
   const { token } = useParams<{ token: string }>();
