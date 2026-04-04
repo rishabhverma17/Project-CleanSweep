@@ -118,4 +118,18 @@ public class AdminController : ControllerBase
         await _db.SaveChangesAsync(ct);
         return Ok(new { message = $"Queued {items.Count} item(s) for reprocessing." });
     }
+
+    [HttpPost("fix-stuck-status")]
+    public async Task<ActionResult> FixStuckStatus(CancellationToken ct)
+    {
+        // Fix items that have thumbnails but status is still Pending/Processing
+        var fixedCount = await _db.MediaItems
+            .Where(m => !m.IsDeleted
+                && m.ThumbnailBlobPath != null
+                && (m.ProcessingStatus == ProcessingStatus.Pending || m.ProcessingStatus == ProcessingStatus.Processing || m.ProcessingStatus == ProcessingStatus.Uploading))
+            .ExecuteUpdateAsync(s => s.SetProperty(m => m.ProcessingStatus, ProcessingStatus.Complete), ct);
+
+        _logger.LogInformation("Fixed {Count} stuck media items to Complete status", fixedCount);
+        return Ok(new { message = $"Fixed {fixedCount} stuck item(s)." });
+    }
 }

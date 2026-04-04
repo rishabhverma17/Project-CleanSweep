@@ -18,7 +18,8 @@ const statusBadge: Record<number, React.ReactNode> = {
 };
 
 export function MediaCard({ item, selectMode, selected, focused, onToggleSelect, onClick, onDownload, onDelete, onAddToAlbum }: Props) {
-  const badge = statusBadge[item.processingStatus];
+  // Don't show processing badge if thumbnail exists (item was processed even if status is stale)
+  const badge = item.thumbnailUrl ? null : statusBadge[item.processingStatus];
   const isVideo = item.mediaType === 1;
 
   const handleClick = (e: React.MouseEvent) => {
