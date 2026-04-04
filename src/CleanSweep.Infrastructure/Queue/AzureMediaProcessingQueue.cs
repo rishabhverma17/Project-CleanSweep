@@ -41,4 +41,10 @@ public class AzureMediaProcessingQueue : IMediaProcessingQueue
     {
         await _queueClient.DeleteMessageAsync(messageId, popReceipt, ct);
     }
+
+    public async Task<int> GetApproximateCountAsync(CancellationToken ct)
+    {
+        var props = await _queueClient.GetPropertiesAsync(ct);
+        return props.Value.ApproximateMessagesCount;
+    }
 }

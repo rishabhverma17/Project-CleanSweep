@@ -62,6 +62,15 @@ export function AdminPage() {
   const totalUsed = users?.reduce((sum: number, u: any) => sum + (u.usedBytes || 0), 0) ?? 0;
   const totalMedia = users?.reduce((sum: number, u: any) => sum + (u.mediaCount || 0), 0) ?? 0;
 
+  // Live processing stats — auto-refresh every 5 seconds
+  const { data: stats } = useQuery({
+    queryKey: ['admin-stats'],
+    queryFn: adminApi.getStats,
+    refetchInterval: 5000,
+  });
+
+  const isProcessing = stats && (stats.queueDepth > 0 || stats.processing > 0);
+
   if (isLoading) return <div className="py-20 text-center" style={{ color: 'var(--text-muted)' }}>Loading...</div>;
 
   return (
@@ -69,7 +78,7 @@ export function AdminPage() {
       <h2 className="text-2xl font-bold mb-6" style={{ color: 'var(--text-primary)' }}>Admin</h2>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-3 gap-4 mb-6">
         <div className="rounded-xl p-4" style={{ background: 'var(--card-bg)', border: '1px solid var(--border)' }}>
           <p className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Total Users</p>
           <p className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{users?.length ?? 0}</p>
@@ -83,6 +92,52 @@ export function AdminPage() {
           <p className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{formatBytes(totalUsed)}</p>
         </div>
       </div>
+
+      {/* Live Processing Stats */}
+      {stats && (
+        <div className="rounded-xl p-5 mb-6" style={{ background: 'var(--card-bg)', border: `1px solid ${isProcessing ? 'var(--accent)' : 'var(--border)'}` }}>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-medium flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+              Processing Status
+              {isProcessing && <span className="relative flex h-2.5 w-2.5"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" /><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-blue-500" /></span>}
+            </h3>
+            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Auto-refreshing every 5s</span>
+          </div>
+          {/* Progress bar */}
+          {stats.total > 0 && (
+            <div className="mb-3">
+              <div className="flex justify-between text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
+                <span>{stats.complete} / {stats.total} complete</span>
+                <span>{Math.round((stats.complete / stats.total) * 100)}%</span>
+              </div>
+              <div className="h-2 rounded-full overflow-hidden" style={{ background: 'var(--border)' }}>
+                <div className="h-full rounded-full transition-all duration-1000" style={{ width: `${(stats.complete / stats.total) * 100}%`, background: 'var(--accent)' }} />
+              </div>
+            </div>
+          )}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div>
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Queue Depth</p>
+              <p className="text-lg font-bold" style={{ color: stats.queueDepth > 0 ? 'var(--accent)' : 'var(--text-primary)' }}>{stats.queueDepth.toLocaleString()}</p>
+            </div>
+            <div>
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Processing Now</p>
+              <p className="text-lg font-bold" style={{ color: stats.processing > 0 ? '#fbbf24' : 'var(--text-primary)' }}>{stats.processing}</p>
+            </div>
+            <div>
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>No Thumbnail</p>
+              <p className="text-lg font-bold" style={{ color: stats.noThumbnail > 0 ? '#f87171' : '#4ade80' }}>{stats.noThumbnail.toLocaleString()}</p>
+            </div>
+            <div>
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Failed</p>
+              <p className="text-lg font-bold" style={{ color: stats.failed > 0 ? '#f87171' : 'var(--text-primary)' }}>{stats.failed}</p>
+            </div>
+          </div>
+          {stats.softDeleted > 0 && (
+            <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>{stats.softDeleted} items pending blob cleanup</p>
+          )}
+        </div>
+      )}
 
       {/* Actions */}
       <div className="flex gap-3 mb-8 flex-wrap">

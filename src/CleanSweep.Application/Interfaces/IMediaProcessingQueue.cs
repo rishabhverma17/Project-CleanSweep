@@ -7,4 +7,5 @@ public interface IMediaProcessingQueue
     Task EnqueueAsync(ProcessingMessage message, CancellationToken ct = default);
     Task<QueueItem<ProcessingMessage>?> DequeueAsync(TimeSpan visibilityTimeout, CancellationToken ct = default);
     Task CompleteAsync(string messageId, string popReceipt, CancellationToken ct = default);
+    Task<int> GetApproximateCountAsync(CancellationToken ct = default);
 }

@@ -41,6 +41,30 @@ public class AdminController : ControllerBase
         _logger = logger;
     }
 
+    [HttpGet("stats")]
+    public async Task<ActionResult> GetStats(CancellationToken ct)
+    {
+        var queueDepth = await _processingQueue.GetApproximateCountAsync(ct);
+
+        var total = await _db.MediaItems.CountAsync(m => !m.IsDeleted, ct);
+        var complete = await _db.MediaItems.CountAsync(m => !m.IsDeleted && m.ProcessingStatus == ProcessingStatus.Complete, ct);
+        var pending = await _db.MediaItems.CountAsync(m => !m.IsDeleted && m.ProcessingStatus == ProcessingStatus.Pending, ct);
+        var processing = await _db.MediaItems.CountAsync(m => !m.IsDeleted && m.ProcessingStatus == ProcessingStatus.Processing, ct);
+        var uploading = await _db.MediaItems.CountAsync(m => !m.IsDeleted && m.ProcessingStatus == ProcessingStatus.Uploading, ct);
+        var transcoding = await _db.MediaItems.CountAsync(m => !m.IsDeleted && m.ProcessingStatus == ProcessingStatus.Transcoding, ct);
+        var failed = await _db.MediaItems.CountAsync(m => !m.IsDeleted && m.ProcessingStatus == ProcessingStatus.Failed, ct);
+        var noThumb = await _db.MediaItems.CountAsync(m => !m.IsDeleted && m.ThumbnailBlobPath == null, ct);
+        var softDeleted = await _db.MediaItems.CountAsync(m => m.IsDeleted, ct);
+
+        return Ok(new
+        {
+            queueDepth,
+            total, complete, pending, processing, uploading, transcoding, failed,
+            noThumbnail = noThumb,
+            softDeleted
+        });
+    }
+
     [HttpGet("users")]
     public async Task<ActionResult> GetUsers(CancellationToken ct)
     {

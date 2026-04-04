@@ -70,6 +70,15 @@ export const adminApi = {
     const { data } = await api.get('/api/admin/users');
     return data as any[];
   },
+  getStats: async () => {
+    const { data } = await api.get('/api/admin/stats');
+    return data as {
+      queueDepth: number;
+      total: number; complete: number; pending: number; processing: number;
+      uploading: number; transcoding: number; failed: number;
+      noThumbnail: number; softDeleted: number;
+    };
+  },
   resetAll: async () => {
     await api.post('/api/admin/reset');
   },
