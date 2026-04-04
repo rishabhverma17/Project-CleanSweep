@@ -4,7 +4,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import { groupFilesByFolder, getTopLevelFolderName } from '../../hooks/useUpload';
 import { useUploadStore } from '../../stores/uploadStore';
 import { albumApi } from '../../api/albumApi';
-import { useTrackedTask } from '../../hooks/useTrackedTask';
 import { FolderOpen, FolderUp, RefreshCw, CheckCircle2, XCircle, Album, ArrowRight, ChevronDown, Search } from 'lucide-react';
 import type { Album as AlbumType } from '../../types/media';
 
@@ -38,7 +37,6 @@ interface Props {
 export function MediaUploader({ onComplete }: Props) {
   const queryClient = useQueryClient();
   const { summary, startUpload, retryUpload, retryAllFailed, clearCompleted, getVisibleItems } = useUploadStore();
-  const { runTask } = useTrackedTask();
   const folderInputRef = useRef<HTMLInputElement>(null);
   const [folderPreview, setFolderPreview] = useState<FolderPreview | null>(null);
   const [existingAlbums, setExistingAlbums] = useState<AlbumType[]>([]);
