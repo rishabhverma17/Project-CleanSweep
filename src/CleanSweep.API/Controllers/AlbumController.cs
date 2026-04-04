@@ -30,11 +30,78 @@ public class AlbumController : ControllerBase
     public async Task<ActionResult<List<AlbumDto>>> GetAll(CancellationToken ct)
         => Ok(await _albumService.GetAllAsync(ct));
 
+    [HttpPost]
+    public async Task<ActionResult<AlbumDto>> Create([FromBody] CreateAlbumInput input, CancellationToken ct)
+        => Ok(await _albumService.CreateAsync(input.Name, input.Description, ct));
+
+    [HttpPost("{albumId:guid}/media")]
+    public async Task<ActionResult> AddMedia(Guid albumId, [FromBody] AddMediaInput input, CancellationToken ct)
+    {
+        await _albumService.AddMediaAsync(albumId, input.MediaIds, ct);
+        return Ok();
+    }
+
+    [HttpDelete("{albumId:guid}/media/{mediaId:guid}")]
+    public async Task<ActionResult> RemoveMedia(Guid albumId, Guid mediaId, CancellationToken ct)
+    {
+        await _albumService.RemoveMediaAsync(albumId, mediaId, ct);
+        return NoContent();
+    }
+
+    [HttpDelete("{albumId:guid}")]
+    [Authorize(Roles = "owner")]
+    public async Task<ActionResult> DeleteAlbum(Guid albumId, [FromQuery] bool deleteMedia = false, CancellationToken ct = default)
+    {
+        await _albumService.DeleteAlbumAsync(albumId, deleteMedia, ct);
+        return NoContent();
+    }
+
+    [HttpPut("{albumId:guid}")]
+    public async Task<ActionResult<AlbumDto>> Rename(Guid albumId, [FromBody] RenameAlbumInput input, CancellationToken ct)
+    {
+        var album = await _albumService.RenameAsync(albumId, input.Name, input.Description, ct);
+        if (album == null) return NotFound();
+        return Ok(album);
+    }
+
+    [HttpPatch("{albumId:guid}/hidden")]
+    public async Task<ActionResult> ToggleHidden(Guid albumId, CancellationToken ct)
+    {
+        var isHidden = await _albumService.ToggleHiddenAsync(albumId, ct);
+        return Ok(new { isHidden });
+    }
+
+    [HttpPost("{albumId:guid}/password")]
+    public async Task<ActionResult> SetPassword(Guid albumId, [FromBody] SetPasswordInput input, CancellationToken ct)
+    {
+        await _albumService.SetPasswordAsync(albumId, input.Password, ct);
+        return Ok(new { isPasswordProtected = !string.IsNullOrEmpty(input.Password) });
+    }
+
+    [HttpPost("{albumId:guid}/unlock")]
+    public async Task<ActionResult> Unlock(Guid albumId, [FromBody] UnlockInput input, CancellationToken ct)
+    {
+        var valid = await _albumService.VerifyPasswordAsync(albumId, input.Password, ct);
+        if (!valid) return Unauthorized(new { error = "Incorrect password" });
+        return Ok(new { unlocked = true });
+    }
+
     [HttpGet("{albumId:guid}")]
-    public async Task<ActionResult> GetById(Guid albumId, CancellationToken ct)
+    public async Task<ActionResult> GetById(Guid albumId, [FromHeader(Name = "X-Album-Password")] string? albumPassword, CancellationToken ct)
     {
         var album = await _albumRepo.GetByIdWithMediaAsync(albumId, ct);
         if (album == null) return NotFound();
+
+        // If album is password-protected, require password header
+        if (album.PasswordHash != null)
+        {
+            if (string.IsNullOrEmpty(albumPassword))
+                return StatusCode(403, new { error = "Password required", isPasswordProtected = true });
+
+            var valid = await _albumService.VerifyPasswordAsync(albumId, albumPassword, ct);
+            if (!valid)
+                return Unauthorized(new { error = "Incorrect password" });
+        }
 
         var sasExpiry = TimeSpan.FromMinutes(_storageOptions.ReadSasExpiryMinutes);
         var mediaItems = new List<MediaItemDto>();
@@ -64,42 +131,12 @@ public class AlbumController : ControllerBase
             });
         }
 
-        return Ok(new { album = new AlbumDto { Id = album.Id, Name = album.Name, Description = album.Description, CoverThumbnailUrl = album.CoverThumbnailUrl, MediaCount = mediaItems.Count, IsHidden = album.IsHidden, CreatedAt = album.CreatedAt }, media = mediaItems });
-    }
-
-    [HttpPost]
-    public async Task<ActionResult<AlbumDto>> Create([FromBody] CreateAlbumInput input, CancellationToken ct)
-        => Ok(await _albumService.CreateAsync(input.Name, input.Description, ct));
-
-    [HttpPost("{albumId:guid}/media")]
-    public async Task<ActionResult> AddMedia(Guid albumId, [FromBody] AddMediaInput input, CancellationToken ct)
-    {
-        await _albumService.AddMediaAsync(albumId, input.MediaIds, ct);
-        return Ok();
-    }
-
-    [HttpDelete("{albumId:guid}/media/{mediaId:guid}")]
-    public async Task<ActionResult> RemoveMedia(Guid albumId, Guid mediaId, CancellationToken ct)
-    {
-        await _albumService.RemoveMediaAsync(albumId, mediaId, ct);
-        return NoContent();
-    }
-
-    [HttpDelete("{albumId:guid}")]
-    [Authorize(Roles = "owner")]
-    public async Task<ActionResult> DeleteAlbum(Guid albumId, [FromQuery] bool deleteMedia = false, CancellationToken ct = default)
-    {
-        await _albumService.DeleteAlbumAsync(albumId, deleteMedia, ct);
-        return NoContent();
-    }
-
-    [HttpPatch("{albumId:guid}/hidden")]
-    public async Task<ActionResult> ToggleHidden(Guid albumId, CancellationToken ct)
-    {
-        var isHidden = await _albumService.ToggleHiddenAsync(albumId, ct);
-        return Ok(new { isHidden });
+        return Ok(new { album = new AlbumDto { Id = album.Id, Name = album.Name, Description = album.Description, CoverThumbnailUrl = album.CoverThumbnailUrl, MediaCount = mediaItems.Count, IsHidden = album.IsHidden, IsPasswordProtected = album.PasswordHash != null, CreatedAt = album.CreatedAt }, media = mediaItems });
     }
 }
 
 public record CreateAlbumInput(string Name, string? Description);
+public record RenameAlbumInput(string Name, string? Description);
+public record SetPasswordInput(string? Password);
+public record UnlockInput(string Password);
 public record AddMediaInput(List<Guid> MediaIds);

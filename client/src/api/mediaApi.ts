@@ -71,6 +71,13 @@ export const shareApi = {
   },
   getByToken: async (token: string) => {
     const { data } = await api.get(`/api/share/${token}`);
-    return data as { albumId?: string; mediaId?: string; expiresAt: string };
+    return data as {
+      type: string;
+      albumId?: string;
+      mediaId?: string;
+      expiresAt: string;
+      media?: any;
+      album?: any;
+    };
   },
 };

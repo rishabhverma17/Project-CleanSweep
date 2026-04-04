@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
-import type { MediaItem } from '../types/media';
-import { Calendar, HardDrive, Download, AlertCircle, Loader2 } from 'lucide-react';
+import type { MediaItem, Album } from '../types/media';
+import { Calendar, HardDrive, Download, AlertCircle, Loader2, FolderOpen } from 'lucide-react';
 
 interface SharedData {
-  type: 'media' | 'unknown';
+  type: 'media' | 'album' | 'unknown';
   expiresAt: string;
-  media?: MediaItem;
+  media?: MediaItem | MediaItem[];
+  album?: Album;
 }
 
 export function SharedPage() {
@@ -93,6 +94,60 @@ export function SharedPage() {
               )}
             </div>
           </div>
+        </main>
+      </div>
+    );
+  }
+
+  if (data.type === 'album' && data.album && Array.isArray(data.media)) {
+    const mediaItems = data.media as MediaItem[];
+    return (
+      <div className="min-h-screen flex flex-col" style={{ background: 'var(--content-bg)', color: 'var(--text-primary)' }}>
+        <header className="px-6 h-14 flex items-center justify-between" style={{ borderBottom: '1px solid var(--border)', background: 'var(--sidebar-bg)' }}>
+          <h1 className="text-lg font-medium">CleanSweep</h1>
+          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Shared album · Expires {new Date(data.expiresAt).toLocaleDateString()}</span>
+        </header>
+        <main className="flex-1 p-6 max-w-7xl mx-auto w-full">
+          <div className="mb-6">
+            <h2 className="text-2xl font-bold flex items-center gap-2">
+              <FolderOpen size={24} style={{ color: 'var(--accent)' }} />
+              {data.album.name}
+            </h2>
+            {data.album.description && <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>{data.album.description}</p>}
+            <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>{mediaItems.length} items</p>
+          </div>
+          {mediaItems.length === 0 ? (
+            <div className="text-center py-20" style={{ color: 'var(--text-muted)' }}>This album is empty.</div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+              {mediaItems.map(m => (
+                <div key={m.id} className="relative group rounded-lg overflow-hidden" style={{ background: 'var(--card-bg)' }}>
+                  <div className="aspect-square">
+                    {m.thumbnailUrl ? (
+                      <img src={m.thumbnailUrl} alt={m.fileName} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center" style={{ color: 'var(--text-muted)' }}>
+                        {m.mediaType === 1 ? 'Video' : 'Photo'}
+                      </div>
+                    )}
+                  </div>
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition flex items-end opacity-0 group-hover:opacity-100">
+                    <div className="w-full p-2 flex items-center justify-between">
+                      <span className="text-xs text-white truncate">{m.fileName}</span>
+                      {(m.playbackUrl || m.thumbnailUrl) && (
+                        <button
+                          onClick={() => handleDownload((m.playbackUrl || m.thumbnailUrl)!, m.fileName)}
+                          className="p-1 rounded bg-black/50 text-white hover:bg-black/70 transition"
+                        >
+                          <Download size={14} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </main>
       </div>
     );

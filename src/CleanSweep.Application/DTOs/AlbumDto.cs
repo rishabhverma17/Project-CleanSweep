@@ -8,5 +8,6 @@ public class AlbumDto
     public string? CoverThumbnailUrl { get; set; }
     public int MediaCount { get; set; }
     public bool IsHidden { get; set; }
+    public bool IsPasswordProtected { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
 }

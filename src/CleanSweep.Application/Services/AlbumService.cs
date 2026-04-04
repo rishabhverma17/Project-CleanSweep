@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using CleanSweep.Application.DTOs;
 using CleanSweep.Application.Interfaces;
 using CleanSweep.Domain.Entities;
@@ -35,7 +36,7 @@ public class AlbumService
         };
 
         await _albumRepo.AddAsync(album, ct);
-        return new AlbumDto { Id = album.Id, Name = album.Name, Description = album.Description, CreatedAt = album.CreatedAt };
+        return new AlbumDto { Id = album.Id, Name = album.Name, Description = album.Description, CreatedAt = album.CreatedAt, IsPasswordProtected = false };
     }
 
     public async Task<List<AlbumDto>> GetAllAsync(CancellationToken ct)
@@ -50,6 +51,7 @@ public class AlbumService
             CoverThumbnailUrl = a.CoverThumbnailUrl,
             MediaCount = a.AlbumMedia.Count(am => am.Media != null && !am.Media.IsDeleted),
             IsHidden = a.IsHidden,
+            IsPasswordProtected = a.PasswordHash != null,
             CreatedAt = a.CreatedAt
         }).ToList();
     }
@@ -71,6 +73,7 @@ public class AlbumService
             Description = album.Description,
             CoverThumbnailUrl = album.CoverThumbnailUrl,
             MediaCount = album.AlbumMedia.Count,
+            IsPasswordProtected = album.PasswordHash != null,
             CreatedAt = album.CreatedAt
         };
     }
@@ -94,6 +97,22 @@ public class AlbumService
         await _albumRepo.DeleteAsync(albumId, ct);
     }
 
+    public async Task<AlbumDto?> RenameAsync(Guid albumId, string name, string? description, CancellationToken ct)
+    {
+        var album = await _albumRepo.GetByIdWithMediaAsync(albumId, ct);
+        if (album == null) return null;
+        album.Name = name;
+        album.Description = description;
+        await _albumRepo.UpdateAsync(album, ct);
+        return new AlbumDto
+        {
+            Id = album.Id, Name = album.Name, Description = album.Description,
+            CoverThumbnailUrl = album.CoverThumbnailUrl,
+            MediaCount = album.AlbumMedia.Count(am => am.Media != null && !am.Media.IsDeleted),
+            IsHidden = album.IsHidden, IsPasswordProtected = album.PasswordHash != null, CreatedAt = album.CreatedAt
+        };
+    }
+
     public async Task<bool> ToggleHiddenAsync(Guid albumId, CancellationToken ct)
     {
         var album = await _albumRepo.GetByIdWithMediaAsync(albumId, ct)
@@ -101,5 +120,57 @@ public class AlbumService
         album.IsHidden = !album.IsHidden;
         await _albumRepo.UpdateAsync(album, ct);
         return album.IsHidden;
+    }
+
+    public async Task SetPasswordAsync(Guid albumId, string? password, CancellationToken ct)
+    {
+        var album = await _albumRepo.GetByIdWithMediaAsync(albumId, ct)
+            ?? throw new KeyNotFoundException("Album not found");
+
+        if (string.IsNullOrEmpty(password))
+        {
+            album.PasswordHash = null;
+        }
+        else
+        {
+            album.PasswordHash = HashPassword(password);
+        }
+        await _albumRepo.UpdateAsync(album, ct);
+    }
+
+    public async Task<bool> VerifyPasswordAsync(Guid albumId, string password, CancellationToken ct)
+    {
+        var album = await _albumRepo.GetByIdWithMediaAsync(albumId, ct)
+            ?? throw new KeyNotFoundException("Album not found");
+
+        if (album.PasswordHash == null) return true; // not protected
+        return VerifyPassword(password, album.PasswordHash);
+    }
+
+    public async Task<bool> IsPasswordProtectedAsync(Guid albumId, CancellationToken ct)
+    {
+        var album = await _albumRepo.GetByIdWithMediaAsync(albumId, ct)
+            ?? throw new KeyNotFoundException("Album not found");
+        return album.PasswordHash != null;
+    }
+
+    private static string HashPassword(string password)
+    {
+        var salt = RandomNumberGenerator.GetBytes(16);
+        var hash = Rfc2898DeriveBytes.Pbkdf2(password, salt, 100_000, HashAlgorithmName.SHA256, 32);
+        var result = new byte[48]; // 16 salt + 32 hash
+        salt.CopyTo(result, 0);
+        hash.CopyTo(result, 16);
+        return Convert.ToBase64String(result);
+    }
+
+    private static bool VerifyPassword(string password, string stored)
+    {
+        var data = Convert.FromBase64String(stored);
+        if (data.Length != 48) return false;
+        var salt = data[..16];
+        var expectedHash = data[16..];
+        var actualHash = Rfc2898DeriveBytes.Pbkdf2(password, salt, 100_000, HashAlgorithmName.SHA256, 32);
+        return CryptographicOperations.FixedTimeEquals(actualHash, expectedHash);
     }
 }

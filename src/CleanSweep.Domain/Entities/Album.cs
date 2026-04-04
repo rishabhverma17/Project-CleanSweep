@@ -10,6 +10,7 @@ public class Album
     public string? CoverThumbnailUrl { get; set; }
     public Guid? FamilyId { get; set; }  // null = personal, set = family album
     public bool IsHidden { get; set; }
+    public string? PasswordHash { get; set; }  // PBKDF2 hash, null = not password-protected
     public DateTimeOffset CreatedAt { get; set; }
 
     public AppUser User { get; set; } = null!;

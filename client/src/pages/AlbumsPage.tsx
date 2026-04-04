@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { albumApi } from '../api/albumApi';
-import { FolderOpen, Trash2, EyeOff, Eye } from 'lucide-react';
+import { FolderOpen, Trash2, EyeOff, Eye, Pencil, Lock } from 'lucide-react';
 
 export function AlbumsPage() {
   const navigate = useNavigate();
@@ -14,6 +14,7 @@ export function AlbumsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [renameAlbum, setRenameAlbum] = useState<{ id: string; name: string; description?: string } | null>(null);
 
   const handleCreate = async () => {
     if (!name.trim()) return;
@@ -40,6 +41,13 @@ export function AlbumsPage() {
     await albumApi.toggleHidden(albumId);
     queryClient.invalidateQueries({ queryKey: ['albums'] });
     queryClient.invalidateQueries({ queryKey: ['media'] });
+  };
+
+  const handleRename = async () => {
+    if (!renameAlbum || !renameAlbum.name.trim()) return;
+    await albumApi.rename(renameAlbum.id, renameAlbum.name.trim(), renameAlbum.description?.trim() || undefined);
+    setRenameAlbum(null);
+    queryClient.invalidateQueries({ queryKey: ['albums'] });
   };
 
   if (isLoading) return <div className="text-zinc-500 py-20 text-center">Loading...</div>;
@@ -97,6 +105,11 @@ export function AlbumsPage() {
                   <EyeOff size={12} /> Hidden
                 </div>
               )}
+              {album.isPasswordProtected && (
+                <div className="absolute top-2 right-2 z-10 p-1 rounded-full" style={{ background: 'rgba(0,0,0,0.7)', color: 'var(--accent)' }}>
+                  <Lock size={12} />
+                </div>
+              )}
               <div className="aspect-video bg-zinc-800 flex items-center justify-center text-3xl">
                 {album.coverThumbnailUrl ? (
                   <img src={album.coverThumbnailUrl} alt={album.name} className="w-full h-full object-cover" />
@@ -108,6 +121,13 @@ export function AlbumsPage() {
                   <p className="text-xs text-zinc-500">{album.mediaCount} items</p>
                 </div>
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setRenameAlbum({ id: album.id, name: album.name, description: album.description }); }}
+                    className="text-zinc-600 hover:text-zinc-300 transition p-1"
+                    title="Rename album"
+                  >
+                    <Pencil size={16} />
+                  </button>
                   <button
                     onClick={(e) => handleToggleHidden(e, album.id)}
                     className="text-zinc-600 hover:text-zinc-300 transition p-1"
@@ -125,6 +145,36 @@ export function AlbumsPage() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Rename Modal */}
+      {renameAlbum && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={() => setRenameAlbum(null)}>
+          <div className="rounded-xl p-6 w-full max-w-md" style={{ background: 'var(--sidebar-bg)', border: '1px solid var(--border)' }} onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-bold mb-4" style={{ color: 'var(--text-primary)' }}>Rename Album</h3>
+            <input
+              type="text"
+              placeholder="Album name"
+              value={renameAlbum.name}
+              onChange={e => setRenameAlbum({ ...renameAlbum, name: e.target.value })}
+              className="w-full px-4 py-2 rounded-lg mb-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              style={{ background: 'var(--card-bg)', border: '1px solid var(--border)' }}
+              autoFocus
+            />
+            <input
+              type="text"
+              placeholder="Description (optional)"
+              value={renameAlbum.description || ''}
+              onChange={e => setRenameAlbum({ ...renameAlbum, description: e.target.value })}
+              className="w-full px-4 py-2 rounded-lg mb-4 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              style={{ background: 'var(--card-bg)', border: '1px solid var(--border)' }}
+            />
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => setRenameAlbum(null)} className="px-4 py-2 text-sm" style={{ color: 'var(--text-muted)' }}>Cancel</button>
+              <button onClick={handleRename} className="px-4 py-2 rounded-lg text-sm font-medium transition" style={{ background: 'var(--accent)', color: '#1a1a1a' }}>Save</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

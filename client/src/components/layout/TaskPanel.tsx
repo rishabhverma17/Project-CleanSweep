@@ -1,5 +1,6 @@
 import { useTaskStore, type BackgroundTask } from '../../stores/taskStore';
-import { Loader2, CheckCircle2, XCircle, X, ClipboardList } from 'lucide-react';
+import { useUploadStore } from '../../stores/uploadStore';
+import { Loader2, CheckCircle2, XCircle, X, ClipboardList, Upload } from 'lucide-react';
 
 function TaskItem({ task }: { task: BackgroundTask }) {
   return (
@@ -34,8 +35,14 @@ function TaskItem({ task }: { task: BackgroundTask }) {
 
 export function TaskPanel() {
   const { tasks, isOpen, toggle, clearDone } = useTaskStore();
-  const runningCount = tasks.filter(t => t.status === 'running').length;
-  const hasCompleted = tasks.some(t => t.status !== 'running');
+  const { uploads, isUploading, clearCompleted: clearUploads } = useUploadStore();
+  const uploadDone = uploads.filter(u => u.status === 'done').length;
+  const uploadTotal = uploads.length;
+  const uploadFailed = uploads.filter(u => u.status === 'error').length;
+  const uploadProgress = uploadTotal > 0 ? Math.round((uploadDone / uploadTotal) * 100) : 0;
+
+  const runningCount = tasks.filter(t => t.status === 'running').length + (isUploading ? 1 : 0);
+  const hasCompleted = tasks.some(t => t.status !== 'running') || (uploadTotal > 0 && !isUploading);
 
   return (
     <>
@@ -67,13 +74,34 @@ export function TaskPanel() {
             <h3 className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Tasks</h3>
             <div className="flex gap-2">
               {hasCompleted && (
-                <button onClick={clearDone} className="text-xs transition" style={{ color: 'var(--text-muted)' }} onMouseEnter={e => (e.target as HTMLElement).style.color = 'var(--text-primary)'} onMouseLeave={e => (e.target as HTMLElement).style.color = 'var(--text-muted)'}>Clear done</button>
+                <button onClick={() => { clearDone(); clearUploads(); }} className="text-xs transition" style={{ color: 'var(--text-muted)' }} onMouseEnter={e => (e.target as HTMLElement).style.color = 'var(--text-primary)'} onMouseLeave={e => (e.target as HTMLElement).style.color = 'var(--text-muted)'}>Clear done</button>
               )}
               <button onClick={toggle} className="text-lg leading-none transition" style={{ color: 'var(--text-muted)' }} onMouseEnter={e => (e.target as HTMLElement).style.color = 'var(--text-primary)'} onMouseLeave={e => (e.target as HTMLElement).style.color = 'var(--text-muted)'}><X size={18} /></button>
             </div>
           </div>
           <div className="overflow-y-auto flex-1">
-            {tasks.length === 0 ? (
+            {uploadTotal > 0 && (
+              <div className="flex items-center gap-3 px-4 py-3" style={{ borderBottom: '1px solid var(--border)' }}>
+                <div className="flex-shrink-0">
+                  {isUploading ? <Upload size={18} className="animate-pulse" style={{ color: 'var(--accent)' }} /> : uploadFailed > 0 ? <XCircle size={18} style={{ color: '#f87171' }} /> : <CheckCircle2 size={18} style={{ color: '#4ade80' }} />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm truncate" style={{ color: 'var(--text-primary)' }}>
+                    Uploading {uploadDone}/{uploadTotal} files
+                    {uploadFailed > 0 && <span className="text-red-400 ml-1">({uploadFailed} failed)</span>}
+                  </p>
+                  {isUploading && (
+                    <div className="mt-1 h-1 rounded-full overflow-hidden" style={{ background: 'var(--border)' }}>
+                      <div className="h-full rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%`, background: 'var(--accent)' }} />
+                    </div>
+                  )}
+                </div>
+                <span className="text-xs flex-shrink-0" style={{ color: 'var(--text-muted)' }}>
+                  {isUploading ? `${uploadProgress}%` : 'Done'}
+                </span>
+              </div>
+            )}
+            {tasks.length === 0 && uploadTotal === 0 ? (
               <div className="px-4 py-8 text-center text-sm" style={{ color: 'var(--text-muted)' }}>No tasks</div>
             ) : (
               tasks.map(task => <TaskItem key={task.id} task={task} />)
