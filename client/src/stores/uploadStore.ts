@@ -42,7 +42,6 @@ interface UploadBatch {
 const MAX_CONCURRENT = 12;
 const MAX_RETRIES = 3;
 const INITIAL_RETRY_DELAY = 1000;
-const BATCH_SAS_SIZE = 100; // Request SAS URLs in batches of 100
 const PROGRESS_THROTTLE_MS = 500;
 const COMPLETE_FLUSH_INTERVAL = 2000; // Flush complete queue every 2 seconds
 const COMPLETE_BATCH_SIZE = 20; // Max items per complete-batch call
@@ -282,32 +281,6 @@ export const useUploadStore = create<UploadStore>((set, get) => {
     }
   };
 
-  // Pre-request SAS URLs in batches to reduce round-trips
-  const prefetchSasUrls = async (items: UploadItem[]): Promise<Map<string, { mediaId: string; uploadUrl: string }>> => {
-    const results = new Map<string, { mediaId: string; uploadUrl: string }>();
-
-    // Process in batches
-    for (let i = 0; i < items.length; i += BATCH_SAS_SIZE) {
-      const batch = items.slice(i, i + BATCH_SAS_SIZE);
-      const requests = batch.map(item => ({
-        fileName: item.file.name,
-        contentType: inferContentType(item.file),
-        sizeBytes: item.file.size,
-      }));
-
-      try {
-        const responses = await mediaApi.requestUploadBatch(requests);
-        for (let j = 0; j < batch.length && j < responses.length; j++) {
-          results.set(batch[j].id, responses[j]);
-        }
-      } catch {
-        // Batch endpoint not available — fall back to individual requests
-        return results;
-      }
-    }
-    return results;
-  };
-
   // Using function declaration (hoisted) so flushCompleteQueue can reference it
   function checkBatchComplete(batchId: string) {
     const state = get();
@@ -351,32 +324,6 @@ export const useUploadStore = create<UploadStore>((set, get) => {
 
     set(state => ({ batches: state.batches.filter(b => b.id !== batchId) }));
   }
-
-  // The prefetch cache: uploadItemId → { mediaId, uploadUrl }
-  let sasCache = new Map<string, { mediaId: string; uploadUrl: string }>();
-
-  const uploadFileWithCache = async (item: UploadItem, attempt = 0) => {
-    const cached = sasCache.get(item.id);
-    if (cached) {
-      try {
-        updateItem(item.id, { status: 'uploading', mediaId: cached.mediaId, progress: 0 });
-        await uploadToBlob(cached.uploadUrl, item.file, item.id);
-        queueComplete(cached.mediaId, item.id);
-        return;
-      } catch (err: any) {
-        if (attempt < MAX_RETRIES) {
-          const delay = Math.min(INITIAL_RETRY_DELAY * Math.pow(2, attempt), 30000);
-          updateItem(item.id, { status: 'uploading', progress: 0, error: `Retry ${attempt + 1}/${MAX_RETRIES}...` });
-          await new Promise(r => setTimeout(r, delay));
-          return uploadFileWithCache(item, attempt + 1);
-        }
-        updateItem(item.id, { status: 'error', error: err.message || 'Upload failed' });
-        return;
-      }
-    }
-    // No cache hit — fall back to individual request
-    return uploadFile(item, attempt);
-  };
 
   return {
     _itemMap: new Map(),
@@ -430,8 +377,6 @@ export const useUploadStore = create<UploadStore>((set, get) => {
           newOrder.push(item.id);
         }
 
-        sasCache = new Map();
-
         set({
           _itemMap: newMap,
           _itemOrder: newOrder,
@@ -446,15 +391,8 @@ export const useUploadStore = create<UploadStore>((set, get) => {
           },
         });
 
-        // Prefetch SAS URLs then start processing — NOT before, to avoid
-        // creating duplicate MediaItems (prefetch + individual request race)
-        prefetchSasUrls(newItems).then(cache => {
-          sasCache = cache;
-          get()._processQueue();
-        }).catch(() => {
-          // Prefetch failed — process without cache (individual requests)
-          get()._processQueue();
-        });
+        // Start uploading immediately — each file gets its own SAS URL on demand
+        get()._processQueue();
       });
     },
 
@@ -482,7 +420,7 @@ export const useUploadStore = create<UploadStore>((set, get) => {
       }
 
       for (const item of queued) {
-        uploadFileWithCache(item).then(() => {
+        uploadFile(item).then(() => {
           get()._processQueue();
           for (const batch of get().batches) checkBatchComplete(batch.id);
 
