@@ -98,14 +98,24 @@ export const useUploadStore = create<UploadStore>((set, get) => {
     if (completeQueue.length === 0) return;
     const batch = completeQueue.splice(0, COMPLETE_BATCH_SIZE);
     const mediaIds = batch.map(b => b.mediaId);
+    let success = false;
     try {
       await mediaApi.completeUploadBatch(mediaIds);
+      success = true;
     } catch {
       // Fall back to individual calls
       for (const { mediaId } of batch) {
         try { await mediaApi.completeUpload(mediaId); } catch { }
       }
+      success = true; // individual calls attempted
     }
+
+    if (!success) {
+      // Put items back in queue for retry
+      completeQueue.unshift(...batch);
+      return;
+    }
+
     // Mark items as done
     for (const { mediaId, itemId } of batch) {
       updateItem(itemId, { status: 'done', mediaId });

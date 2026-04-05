@@ -201,19 +201,20 @@ public class AdminController : ControllerBase
     [HttpPost("reprocess-stuck")]
     public async Task<ActionResult> ReprocessStuck(CancellationToken ct)
     {
-        // Target any non-deleted item without a thumbnail that is NOT currently Uploading
-        // Uploading = client is still sending blob, everything else is fair game to re-queue
-        var cutoff = DateTimeOffset.UtcNow.AddMinutes(-5); // Only items older than 5 min
-        var count = await _db.MediaItems
+        var cutoff = DateTimeOffset.UtcNow.AddMinutes(-30);
+
+        // Find ALL items without thumbnails that are old enough to be stuck
+        // This includes Uploading items whose completeUpload was never called
+        var stuckItems = await _db.MediaItems
             .Where(m => !m.IsDeleted
                 && m.ThumbnailBlobPath == null
-                && m.ProcessingStatus != ProcessingStatus.Uploading
                 && m.UploadedAt < cutoff)
-            .CountAsync(ct);
+            .ToListAsync(ct);
 
-        if (count == 0)
+        if (stuckItems.Count == 0)
             return Ok(new { message = "No stuck items found." });
 
+        var count = stuckItems.Count;
         var scopeFactory2 = _scopeFactory;
         _ = Task.Run(async () =>
         {
@@ -222,16 +223,36 @@ public class AdminController : ControllerBase
                 using var scope = scopeFactory2.CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
                 var queue = scope.ServiceProvider.GetRequiredService<IMediaProcessingQueue>();
+                var blobService = scope.ServiceProvider.GetRequiredService<IBlobStorageService>();
+                var storageOptions = scope.ServiceProvider.GetRequiredService<IOptions<StorageOptions>>().Value;
 
                 var items = await db.MediaItems
                     .Where(m => !m.IsDeleted
                         && m.ThumbnailBlobPath == null
-                        && m.ProcessingStatus != ProcessingStatus.Uploading
                         && m.UploadedAt < cutoff)
                     .ToListAsync();
 
+                var queued = 0;
+                var skipped = 0;
                 foreach (var item in items)
                 {
+                    // For Uploading items: check if blob exists, then transition to Pending
+                    if (item.ProcessingStatus == ProcessingStatus.Uploading)
+                    {
+                        var exists = await blobService.ExistsAsync(storageOptions.OriginalsContainer, item.OriginalBlobPath, CancellationToken.None);
+                        if (!exists)
+                        {
+                            // Blob never made it — soft delete this orphan
+                            item.IsDeleted = true;
+                            item.DeletedAt = DateTimeOffset.UtcNow;
+                            skipped++;
+                            continue;
+                        }
+                        // Get actual file size
+                        var size = await blobService.GetBlobSizeAsync(storageOptions.OriginalsContainer, item.OriginalBlobPath, CancellationToken.None);
+                        item.FileSizeBytes = size;
+                    }
+
                     item.ProcessingStatus = ProcessingStatus.Pending;
 
                     await queue.EnqueueAsync(new ProcessingMessage
@@ -243,18 +264,19 @@ public class AdminController : ControllerBase
                         UserId = item.UserId,
                         CorrelationId = Guid.NewGuid().ToString("N")
                     });
+                    queued++;
                 }
 
                 await db.SaveChangesAsync();
-                _logger.LogInformation("Queued {Count} stuck items for reprocessing", items.Count);
+                _logger.LogInformation("Reprocess-stuck: queued {Queued}, skipped {Skipped} (no blob)", queued, skipped);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to queue stuck items for reprocessing");
+                _logger.LogError(ex, "Failed to reprocess stuck items");
             }
         });
 
-        return Accepted(new { message = $"Queuing {count} stuck item(s) for reprocessing. This runs in the background." });
+        return Accepted(new { message = $"Processing {count} stuck item(s) in background." });
     }
 
     [HttpPost("fix-stuck-status")]
