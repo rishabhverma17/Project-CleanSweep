@@ -201,16 +201,18 @@ public class AdminController : ControllerBase
     [HttpPost("reprocess-stuck")]
     public async Task<ActionResult> ReprocessStuck(CancellationToken ct)
     {
-        // ONLY target items that finished processing (Complete/Failed) but have no thumbnail
-        // Never touch Uploading/Pending/Processing items — they are still in the pipeline
+        // Target any non-deleted item without a thumbnail that is NOT currently Uploading
+        // Uploading = client is still sending blob, everything else is fair game to re-queue
+        var cutoff = DateTimeOffset.UtcNow.AddMinutes(-5); // Only items older than 5 min
         var count = await _db.MediaItems
             .Where(m => !m.IsDeleted
                 && m.ThumbnailBlobPath == null
-                && (m.ProcessingStatus == ProcessingStatus.Complete || m.ProcessingStatus == ProcessingStatus.Failed))
+                && m.ProcessingStatus != ProcessingStatus.Uploading
+                && m.UploadedAt < cutoff)
             .CountAsync(ct);
 
         if (count == 0)
-            return Ok(new { message = "No stuck items found. Items still in pipeline are excluded." });
+            return Ok(new { message = "No stuck items found." });
 
         var scopeFactory2 = _scopeFactory;
         _ = Task.Run(async () =>
@@ -224,7 +226,8 @@ public class AdminController : ControllerBase
                 var items = await db.MediaItems
                     .Where(m => !m.IsDeleted
                         && m.ThumbnailBlobPath == null
-                        && (m.ProcessingStatus == ProcessingStatus.Complete || m.ProcessingStatus == ProcessingStatus.Failed))
+                        && m.ProcessingStatus != ProcessingStatus.Uploading
+                        && m.UploadedAt < cutoff)
                     .ToListAsync();
 
                 foreach (var item in items)
