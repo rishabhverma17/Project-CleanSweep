@@ -134,6 +134,8 @@ public class AlbumService
         else
         {
             album.PasswordHash = HashPassword(password);
+            // Auto-hide album when password is set
+            album.IsHidden = true;
         }
         await _albumRepo.UpdateAsync(album, ct);
     }
