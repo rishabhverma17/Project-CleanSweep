@@ -241,6 +241,20 @@ public class AdminController : ControllerBase
         return Ok(new { message = $"Fixed {fixedCount} stuck item(s)." });
     }
 
+    [HttpPost("purge-failed")]
+    public async Task<ActionResult> PurgeFailed(CancellationToken ct)
+    {
+        // Soft-delete all failed items (orphan records with no blob)
+        var count = await _db.MediaItems
+            .Where(m => !m.IsDeleted && m.ProcessingStatus == ProcessingStatus.Failed)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(m => m.IsDeleted, true)
+                .SetProperty(m => m.DeletedAt, DateTimeOffset.UtcNow), ct);
+
+        _logger.LogInformation("Purged {Count} failed media items", count);
+        return Ok(new { message = $"Purged {count} failed item(s). Blob cleanup will run automatically." });
+    }
+
     [HttpPost("reset-processing")]
     public async Task<ActionResult> ResetProcessing(CancellationToken ct)
     {

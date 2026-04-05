@@ -102,4 +102,8 @@ export const adminApi = {
     const { data } = await api.post('/api/admin/reset-processing');
     return data as { message: string };
   },
+  purgeFailed: async () => {
+    const { data } = await api.post('/api/admin/purge-failed');
+    return data as { message: string };
+  },
 };

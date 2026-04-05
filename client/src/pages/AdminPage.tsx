@@ -54,6 +54,15 @@ export function AdminPage() {
     });
   };
 
+  const handlePurgeFailed = async () => {
+    if (!confirm('This will remove all failed items (orphan records). Continue?')) return;
+    await runTask('Purging failed items', async () => {
+      const result = await adminApi.purgeFailed();
+      alert(result.message);
+      queryClient.invalidateQueries({ queryKey: ['admin-users'] });
+    });
+  };
+
   const handleTriggerCleanup = async () => {
     await runTask('Triggering blob cleanup', async () => {
       const result = await adminApi.triggerCleanup();
@@ -167,6 +176,11 @@ export function AdminPage() {
         {stats && stats.processing > 10 && (
           <button onClick={handleResetProcessing} className="px-4 py-2 rounded-lg text-sm transition flex items-center gap-1.5" style={{ background: 'var(--card-bg)', color: '#f87171', border: '1px solid var(--border)' }}>
             Reset {stats.processing} Stuck Processing
+          </button>
+        )}
+        {stats && stats.failed > 0 && (
+          <button onClick={handlePurgeFailed} className="px-4 py-2 rounded-lg text-sm transition flex items-center gap-1.5" style={{ background: 'var(--card-bg)', color: '#f87171', border: '1px solid var(--border)' }}>
+            Purge {stats.failed} Failed
           </button>
         )}
         {stats && stats.softDeleted > 0 && (

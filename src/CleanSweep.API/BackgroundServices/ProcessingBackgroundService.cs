@@ -244,6 +244,22 @@ public class ProcessingBackgroundService : BackgroundService
 
             _logger.LogInformation("Processing complete for {MediaId}. Status={Status}", mediaItem.Id, mediaItem.ProcessingStatus);
         }
+        catch (Azure.RequestFailedException blobEx) when (blobEx.Status == 404)
+        {
+            // Blob doesn't exist — this is an orphan DB record. Soft-delete it.
+            _logger.LogWarning("Blob not found for {MediaId}, soft-deleting orphan record", item.Message.MediaId);
+            try
+            {
+                using var cleanupScope = _scopeFactory.CreateScope();
+                var cleanupRepo = cleanupScope.ServiceProvider.GetRequiredService<IMediaRepository>();
+                await cleanupRepo.SoftDeleteAsync(item.Message.MediaId, CancellationToken.None);
+            }
+            catch (Exception innerEx)
+            {
+                _logger.LogError(innerEx, "Failed to soft-delete orphan {MediaId}", item.Message.MediaId);
+            }
+            try { await _queue.CompleteAsync(item.MessageId, item.PopReceipt, CancellationToken.None); } catch { }
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error processing {MediaId}", item.Message.MediaId);
