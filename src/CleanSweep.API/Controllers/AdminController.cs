@@ -53,7 +53,8 @@ public class AdminController : ControllerBase
         var uploading = await _db.MediaItems.CountAsync(m => !m.IsDeleted && m.ProcessingStatus == ProcessingStatus.Uploading, ct);
         var transcoding = await _db.MediaItems.CountAsync(m => !m.IsDeleted && m.ProcessingStatus == ProcessingStatus.Transcoding, ct);
         var failed = await _db.MediaItems.CountAsync(m => !m.IsDeleted && m.ProcessingStatus == ProcessingStatus.Failed, ct);
-        var noThumb = await _db.MediaItems.CountAsync(m => !m.IsDeleted && m.ThumbnailBlobPath == null, ct);
+        var noThumb = await _db.MediaItems.CountAsync(m => !m.IsDeleted && m.ThumbnailBlobPath == null && m.ProcessingStatus == ProcessingStatus.Complete, ct);
+        var noThumbInPipeline = await _db.MediaItems.CountAsync(m => !m.IsDeleted && m.ThumbnailBlobPath == null && m.ProcessingStatus != ProcessingStatus.Complete && m.ProcessingStatus != ProcessingStatus.Failed, ct);
         var softDeleted = await _db.MediaItems.CountAsync(m => m.IsDeleted, ct);
 
         return Ok(new
@@ -61,6 +62,7 @@ public class AdminController : ControllerBase
             queueDepth,
             total, complete, pending, processing, uploading, transcoding, failed,
             noThumbnail = noThumb,
+            inPipeline = noThumbInPipeline,
             softDeleted
         });
     }
@@ -175,13 +177,16 @@ public class AdminController : ControllerBase
     [HttpPost("reprocess-stuck")]
     public async Task<ActionResult> ReprocessStuck(CancellationToken ct)
     {
-        // Find items with no thumbnail regardless of status
+        // ONLY target items that finished processing (Complete/Failed) but have no thumbnail
+        // Never touch Uploading/Pending/Processing items — they are still in the pipeline
         var count = await _db.MediaItems
-            .Where(m => !m.IsDeleted && m.ThumbnailBlobPath == null)
+            .Where(m => !m.IsDeleted
+                && m.ThumbnailBlobPath == null
+                && (m.ProcessingStatus == ProcessingStatus.Complete || m.ProcessingStatus == ProcessingStatus.Failed))
             .CountAsync(ct);
 
         if (count == 0)
-            return Ok(new { message = "No stuck items found." });
+            return Ok(new { message = "No stuck items found. Items still in pipeline are excluded." });
 
         var scopeFactory2 = _scopeFactory;
         _ = Task.Run(async () =>
@@ -193,7 +198,9 @@ public class AdminController : ControllerBase
                 var queue = scope.ServiceProvider.GetRequiredService<IMediaProcessingQueue>();
 
                 var items = await db.MediaItems
-                    .Where(m => !m.IsDeleted && m.ThumbnailBlobPath == null)
+                    .Where(m => !m.IsDeleted
+                        && m.ThumbnailBlobPath == null
+                        && (m.ProcessingStatus == ProcessingStatus.Complete || m.ProcessingStatus == ProcessingStatus.Failed))
                     .ToListAsync();
 
                 foreach (var item in items)

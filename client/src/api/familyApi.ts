@@ -76,7 +76,7 @@ export const adminApi = {
       queueDepth: number;
       total: number; complete: number; pending: number; processing: number;
       uploading: number; transcoding: number; failed: number;
-      noThumbnail: number; softDeleted: number;
+      noThumbnail: number; inPipeline: number; softDeleted: number;
     };
   },
   resetAll: async () => {

@@ -138,7 +138,7 @@ export function AdminPage() {
               </div>
             </div>
           )}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             <div>
               <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Queue Depth</p>
               <p className="text-lg font-bold" style={{ color: stats.queueDepth > 0 ? 'var(--accent)' : 'var(--text-primary)' }}>{stats.queueDepth.toLocaleString()}</p>
@@ -146,6 +146,10 @@ export function AdminPage() {
             <div>
               <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Processing Now</p>
               <p className="text-lg font-bold" style={{ color: stats.processing > 0 ? '#fbbf24' : 'var(--text-primary)' }}>{stats.processing}</p>
+            </div>
+            <div>
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>In Pipeline</p>
+              <p className="text-lg font-bold" style={{ color: stats.inPipeline > 0 ? 'var(--accent)' : 'var(--text-primary)' }}>{stats.inPipeline.toLocaleString()}</p>
             </div>
             <div>
               <p className="text-xs" style={{ color: 'var(--text-muted)' }}>No Thumbnail</p>

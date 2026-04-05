@@ -246,17 +246,35 @@ public class ProcessingBackgroundService : BackgroundService
         }
         catch (Azure.RequestFailedException blobEx) when (blobEx.Status == 404)
         {
-            // Blob doesn't exist — this is an orphan DB record. Soft-delete it.
-            _logger.LogWarning("Blob not found for {MediaId}, soft-deleting orphan record", item.Message.MediaId);
+            // Blob doesn't exist — but only treat as orphan if item is old (>1 hour)
+            // Recent items might still be uploading
             try
             {
                 using var cleanupScope = _scopeFactory.CreateScope();
                 var cleanupRepo = cleanupScope.ServiceProvider.GetRequiredService<IMediaRepository>();
-                await cleanupRepo.SoftDeleteAsync(item.Message.MediaId, CancellationToken.None);
+                var orphanItem = await cleanupRepo.GetByIdAsync(item.Message.MediaId, CancellationToken.None);
+
+                if (orphanItem != null && orphanItem.UploadedAt < DateTimeOffset.UtcNow.AddHours(-1))
+                {
+                    _logger.LogWarning("Blob not found for old item {MediaId} (uploaded {UploadedAt}), soft-deleting orphan",
+                        item.Message.MediaId, orphanItem.UploadedAt);
+                    await cleanupRepo.SoftDeleteAsync(item.Message.MediaId, CancellationToken.None);
+                }
+                else
+                {
+                    // Recent item — mark as Failed, don't delete. Might still be uploading.
+                    if (orphanItem != null)
+                    {
+                        orphanItem.ProcessingStatus = ProcessingStatus.Failed;
+                        await cleanupRepo.UpdateAsync(orphanItem, CancellationToken.None);
+                        _logger.LogWarning("Blob not found for recent item {MediaId} (uploaded {UploadedAt}), marked as Failed (not deleted)",
+                            item.Message.MediaId, orphanItem?.UploadedAt);
+                    }
+                }
             }
             catch (Exception innerEx)
             {
-                _logger.LogError(innerEx, "Failed to soft-delete orphan {MediaId}", item.Message.MediaId);
+                _logger.LogError(innerEx, "Failed to handle BlobNotFound for {MediaId}", item.Message.MediaId);
             }
             try { await _queue.CompleteAsync(item.MessageId, item.PopReceipt, CancellationToken.None); } catch { }
         }
