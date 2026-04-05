@@ -43,51 +43,46 @@ public class ProcessingBackgroundService : BackgroundService
         _logger.LogInformation("ProcessingBackgroundService started ({Concurrency} concurrent), listening on queue '{Queue}'",
             MaxConcurrentProcessing, _queueOptions.MediaProcessingQueue);
 
-        var semaphore = new SemaphoreSlim(MaxConcurrentProcessing);
-        var activeTasks = new List<Task>();
+        // Simple worker pool — each worker independently dequeues and processes
+        var workers = Enumerable.Range(0, MaxConcurrentProcessing)
+            .Select(i => RunWorkerAsync(i, stoppingToken))
+            .ToArray();
 
-        while (!stoppingToken.IsCancellationRequested)
+        await Task.WhenAll(workers);
+        _logger.LogInformation("ProcessingBackgroundService stopped");
+    }
+
+    private async Task RunWorkerAsync(int workerId, CancellationToken ct)
+    {
+        _logger.LogInformation("Processing worker {WorkerId} started", workerId);
+
+        while (!ct.IsCancellationRequested)
         {
             try
             {
-                await semaphore.WaitAsync(stoppingToken);
-
                 var visibilityTimeout = TimeSpan.FromSeconds(_queueOptions.ProcessingVisibilityTimeoutSeconds);
-                var item = await _queue.DequeueAsync(visibilityTimeout, stoppingToken);
+                var item = await _queue.DequeueAsync(visibilityTimeout, ct);
 
                 if (item == null)
                 {
-                    semaphore.Release();
-                    // Clean up completed tasks
-                    activeTasks.RemoveAll(t => t.IsCompleted);
-                    await Task.Delay(TimeSpan.FromSeconds(2), stoppingToken);
+                    await Task.Delay(TimeSpan.FromSeconds(3), ct);
                     continue;
                 }
 
-                var task = ProcessItemAsync(item, semaphore, stoppingToken);
-                activeTasks.Add(task);
-
-                // Clean up completed tasks periodically
-                activeTasks.RemoveAll(t => t.IsCompleted);
+                await ProcessItemAsync(item, ct);
             }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
             catch (Exception ex)
             {
-                semaphore.Release();
-                _logger.LogError(ex, "Error in processing loop");
-                await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+                _logger.LogError(ex, "Worker {WorkerId} error in dequeue loop", workerId);
+                await Task.Delay(TimeSpan.FromSeconds(5), ct);
             }
         }
 
-        // Wait for in-flight tasks to finish on shutdown
-        if (activeTasks.Count > 0)
-        {
-            _logger.LogInformation("Waiting for {Count} in-flight processing tasks to complete", activeTasks.Count);
-            await Task.WhenAll(activeTasks);
-        }
+        _logger.LogInformation("Processing worker {WorkerId} stopped", workerId);
     }
 
-    private async Task ProcessItemAsync(QueueItem<ProcessingMessage> item, SemaphoreSlim semaphore, CancellationToken stoppingToken)
+    private async Task ProcessItemAsync(QueueItem<ProcessingMessage> item, CancellationToken stoppingToken)
     {
         try
         {
@@ -302,10 +297,6 @@ public class ProcessingBackgroundService : BackgroundService
 
             // Complete the queue message so it doesn't retry endlessly
             try { await _queue.CompleteAsync(item.MessageId, item.PopReceipt, CancellationToken.None); } catch { }
-        }
-        finally
-        {
-            semaphore.Release();
         }
     }
 }
