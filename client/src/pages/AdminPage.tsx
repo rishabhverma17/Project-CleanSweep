@@ -183,11 +183,9 @@ export function AdminPage() {
             Purge {stats.failed} Failed
           </button>
         )}
-        {stats && stats.softDeleted > 0 && (
-          <button onClick={handleTriggerCleanup} className="px-4 py-2 rounded-lg text-sm transition flex items-center gap-1.5" style={{ background: 'var(--card-bg)', color: '#fbbf24', border: '1px solid var(--border)' }}>
-            Cleanup {stats.softDeleted} Blobs
-          </button>
-        )}
+        <button onClick={handleTriggerCleanup} className="px-4 py-2 rounded-lg text-sm transition flex items-center gap-1.5" style={{ background: 'var(--card-bg)', color: '#fbbf24', border: '1px solid var(--border)' }}>
+          Cleanup Blobs {stats?.softDeleted ? `(${stats.softDeleted})` : ''}
+        </button>
         <button onClick={handleReset} className="px-4 py-2 bg-red-800 hover:bg-red-700 rounded-lg text-sm text-white transition flex items-center gap-1.5">
           <AlertTriangle size={14} /> Reset All Data
         </button>
