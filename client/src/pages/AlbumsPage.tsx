@@ -36,11 +36,24 @@ export function AlbumsPage() {
     if (deleteMedia) queryClient.invalidateQueries({ queryKey: ['media'] });
   };
 
-  const handleToggleHidden = async (e: React.MouseEvent, albumId: string) => {
+  const handleToggleHidden = async (e: React.MouseEvent, album: { id: string; isHidden: boolean; isPasswordProtected: boolean }) => {
     e.stopPropagation();
-    await albumApi.toggleHidden(albumId);
-    queryClient.invalidateQueries({ queryKey: ['albums'] });
-    queryClient.invalidateQueries({ queryKey: ['media'] });
+    let password: string | undefined;
+    // Require password to unhide a password-protected album
+    if (album.isHidden && album.isPasswordProtected) {
+      const input = prompt('Enter album password to unhide:');
+      if (!input) return;
+      password = input;
+    }
+    try {
+      await albumApi.toggleHidden(album.id, password);
+      queryClient.invalidateQueries({ queryKey: ['albums'] });
+      queryClient.invalidateQueries({ queryKey: ['media'] });
+    } catch (err: any) {
+      if (err?.response?.status === 401) {
+        alert('Incorrect password.');
+      }
+    }
   };
 
   const handleRename = async () => {
@@ -129,7 +142,7 @@ export function AlbumsPage() {
                     <Pencil size={16} />
                   </button>
                   <button
-                    onClick={(e) => handleToggleHidden(e, album.id)}
+                    onClick={(e) => handleToggleHidden(e, album)}
                     className="text-zinc-600 hover:text-zinc-300 transition p-1"
                     title={album.isHidden ? 'Unhide album' : 'Hide album'}
                   >

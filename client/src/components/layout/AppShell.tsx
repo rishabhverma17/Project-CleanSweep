@@ -43,7 +43,7 @@ export function AppShell() {
 
   return (
     <GlobalDropZone>
-      <div className="min-h-screen flex flex-col md:flex-row" style={{ background: 'var(--content-bg)', color: 'var(--text-primary)' }}>
+      <div className="h-screen flex flex-col md:flex-row overflow-hidden" style={{ background: 'var(--content-bg)', color: 'var(--text-primary)' }}>
 
         {/* ══ MOBILE TOP BAR ══ */}
         <header className="md:hidden flex items-center justify-between px-4 h-12 flex-shrink-0" style={{ background: 'var(--sidebar-bg)', borderBottom: '1px solid var(--border)' }}>

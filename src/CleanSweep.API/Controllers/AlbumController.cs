@@ -65,10 +65,17 @@ public class AlbumController : ControllerBase
     }
 
     [HttpPatch("{albumId:guid}/hidden")]
-    public async Task<ActionResult> ToggleHidden(Guid albumId, CancellationToken ct)
+    public async Task<ActionResult> ToggleHidden(Guid albumId, [FromBody] ToggleHiddenInput? input, CancellationToken ct)
     {
-        var isHidden = await _albumService.ToggleHiddenAsync(albumId, ct);
-        return Ok(new { isHidden });
+        try
+        {
+            var isHidden = await _albumService.ToggleHiddenAsync(albumId, input?.Password, ct);
+            return Ok(new { isHidden });
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Unauthorized(new { error = ex.Message });
+        }
     }
 
     [HttpPost("{albumId:guid}/password")]
@@ -140,3 +147,4 @@ public record RenameAlbumInput(string Name, string? Description);
 public record SetPasswordInput(string? Password);
 public record UnlockInput(string Password);
 public record AddMediaInput(List<Guid> MediaIds);
+public record ToggleHiddenInput(string? Password);

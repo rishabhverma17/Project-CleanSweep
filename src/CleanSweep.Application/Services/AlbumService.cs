@@ -113,10 +113,18 @@ public class AlbumService
         };
     }
 
-    public async Task<bool> ToggleHiddenAsync(Guid albumId, CancellationToken ct)
+    public async Task<bool> ToggleHiddenAsync(Guid albumId, string? password, CancellationToken ct)
     {
         var album = await _albumRepo.GetByIdWithMediaAsync(albumId, ct)
             ?? throw new KeyNotFoundException("Album not found");
+
+        // Unhiding a password-protected album requires the correct password
+        if (album.IsHidden && album.PasswordHash != null)
+        {
+            if (string.IsNullOrEmpty(password) || !VerifyPassword(password, album.PasswordHash))
+                throw new UnauthorizedAccessException("Password required to unhide this album.");
+        }
+
         album.IsHidden = !album.IsHidden;
         await _albumRepo.UpdateAsync(album, ct);
         return album.IsHidden;
