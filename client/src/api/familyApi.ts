@@ -94,4 +94,8 @@ export const adminApi = {
     const { data } = await api.post('/api/admin/fix-stuck-status');
     return data as { message: string };
   },
+  triggerCleanup: async () => {
+    const { data } = await api.post('/api/admin/trigger-cleanup');
+    return data as { message: string };
+  },
 };

@@ -240,4 +240,51 @@ public class AdminController : ControllerBase
         _logger.LogInformation("Fixed {Count} stuck media items to Complete status", fixedCount);
         return Ok(new { message = $"Fixed {fixedCount} stuck item(s)." });
     }
+
+    [HttpPost("trigger-cleanup")]
+    public async Task<ActionResult> TriggerCleanup(CancellationToken ct)
+    {
+        var count = await _db.MediaItems.CountAsync(m => m.IsDeleted, ct);
+        if (count == 0) return Ok(new { message = "Nothing to clean up." });
+
+        // Trigger cleanup in background
+        var scopeFactory = _scopeFactory;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var scope = scopeFactory.CreateScope();
+                var mediaRepo = scope.ServiceProvider.GetRequiredService<IMediaRepository>();
+                var blobService = scope.ServiceProvider.GetRequiredService<IBlobStorageService>();
+                var storageOptions = scope.ServiceProvider.GetRequiredService<IOptions<StorageOptions>>().Value;
+
+                var totalCleaned = 0;
+                while (true)
+                {
+                    var items = await mediaRepo.GetSoftDeletedAsync(TimeSpan.Zero, 500, CancellationToken.None);
+                    if (items.Count == 0) break;
+
+                    await Parallel.ForEachAsync(items, new ParallelOptions { MaxDegreeOfParallelism = 16 }, async (item, _) =>
+                    {
+                        try { await blobService.DeleteAsync(storageOptions.OriginalsContainer, item.OriginalBlobPath, CancellationToken.None); } catch { }
+                        if (item.ThumbnailBlobPath != null)
+                            try { await blobService.DeleteAsync(storageOptions.ThumbnailsContainer, item.ThumbnailBlobPath, CancellationToken.None); } catch { }
+                        if (item.PlaybackBlobPath != null && item.PlaybackBlobPath != item.OriginalBlobPath)
+                            try { await blobService.DeleteAsync(storageOptions.PlaybackContainer, item.PlaybackBlobPath, CancellationToken.None); } catch { }
+                    });
+
+                    await mediaRepo.HardDeleteBatchAsync(items.Select(i => i.Id).ToList(), CancellationToken.None);
+                    totalCleaned += items.Count;
+                }
+
+                _logger.LogInformation("Manual cleanup complete: {Count} items cleaned", totalCleaned);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Manual cleanup failed");
+            }
+        });
+
+        return Accepted(new { message = $"Cleaning up {count} soft-deleted item(s) in background." });
+    }
 }

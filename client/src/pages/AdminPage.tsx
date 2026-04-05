@@ -47,6 +47,13 @@ export function AdminPage() {
     });
   };
 
+  const handleTriggerCleanup = async () => {
+    await runTask('Triggering blob cleanup', async () => {
+      const result = await adminApi.triggerCleanup();
+      alert(result.message);
+    });
+  };
+
   const handleSaveQuota = async () => {
     if (!editingQuota) return;
     const gb = parseFloat(quotaInput);
@@ -150,6 +157,11 @@ export function AdminPage() {
         <button onClick={handleFixStuck} className="px-4 py-2 rounded-lg text-sm transition flex items-center gap-1.5" style={{ background: 'var(--card-bg)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>
           Fix Stuck Statuses
         </button>
+        {stats && stats.softDeleted > 0 && (
+          <button onClick={handleTriggerCleanup} className="px-4 py-2 rounded-lg text-sm transition flex items-center gap-1.5" style={{ background: 'var(--card-bg)', color: '#fbbf24', border: '1px solid var(--border)' }}>
+            Cleanup {stats.softDeleted} Blobs
+          </button>
+        )}
         <button onClick={handleReset} className="px-4 py-2 bg-red-800 hover:bg-red-700 rounded-lg text-sm text-white transition flex items-center gap-1.5">
           <AlertTriangle size={14} /> Reset All Data
         </button>

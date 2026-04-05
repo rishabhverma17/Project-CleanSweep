@@ -31,6 +31,13 @@ public class ProcessingBackgroundService : BackgroundService
 
     private const int MaxConcurrentProcessing = 6;
 
+    private static readonly Dictionary<string, string> ExtensionContentTypeMap = new(StringComparer.OrdinalIgnoreCase)
+    {
+        [".jpg"] = "image/jpeg", [".jpeg"] = "image/jpeg", [".png"] = "image/png",
+        [".heic"] = "image/heic", [".heif"] = "image/heif",
+        [".mp4"] = "video/mp4", [".mov"] = "video/quicktime", [".m4v"] = "video/x-m4v",
+    };
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation("ProcessingBackgroundService started ({Concurrency} concurrent), listening on queue '{Queue}'",
@@ -143,19 +150,48 @@ public class ProcessingBackgroundService : BackgroundService
 
                 try
                 {
-                    var generator = thumbnailGenerators.FirstOrDefault(g => g.CanHandle(mediaItem.ContentType));
+                    // Determine effective content type — fall back to extension if stored type is empty/wrong
+                    var effectiveContentType = mediaItem.ContentType;
+                    var generator = thumbnailGenerators.FirstOrDefault(g => g.CanHandle(effectiveContentType));
+
+                    if (generator == null)
+                    {
+                        // Try to infer from file extension
+                        var ext = Path.GetExtension(mediaItem.FileName)?.ToLowerInvariant() ?? "";
+                        if (ExtensionContentTypeMap.TryGetValue(ext, out var inferredType))
+                        {
+                            effectiveContentType = inferredType;
+                            generator = thumbnailGenerators.FirstOrDefault(g => g.CanHandle(effectiveContentType));
+
+                            // Fix the stored content type for future use
+                            if (generator != null)
+                            {
+                                _logger.LogInformation("Fixed content type for {MediaId}: '{Old}' → '{New}' (inferred from {Extension})",
+                                    mediaItem.Id, mediaItem.ContentType, effectiveContentType, ext);
+                                mediaItem.ContentType = effectiveContentType;
+                            }
+                        }
+                    }
+
                     if (generator != null)
                     {
                         await using var thumbSourceStream = File.OpenRead(tempPath);
-                        using var thumbStream = await generator.GenerateAsync(thumbSourceStream, mediaItem.ContentType, 300, stoppingToken);
+                        using var thumbStream = await generator.GenerateAsync(thumbSourceStream, effectiveContentType, 300, stoppingToken);
                         var thumbPath = BlobPathGenerator.Generate(mediaItem.Id, ".jpg");
                         await blobService.UploadAsync(thumbStream, _storageOptions.ThumbnailsContainer, thumbPath, "image/jpeg", stoppingToken);
                         mediaItem.ThumbnailBlobPath = thumbPath;
+                        _logger.LogInformation("Thumbnail generated for {MediaId} ({ContentType})", mediaItem.Id, effectiveContentType);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("No thumbnail generator found for {MediaId}. ContentType='{ContentType}', FileName='{FileName}'",
+                            mediaItem.Id, mediaItem.ContentType, mediaItem.FileName);
                     }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Thumbnail generation failed for {MediaId}, continuing", mediaItem.Id);
+                    _logger.LogWarning(ex, "Thumbnail generation failed for {MediaId} ({ContentType}), continuing",
+                        mediaItem.Id, mediaItem.ContentType);
                 }
             }
             finally

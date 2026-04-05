@@ -1,6 +1,18 @@
 import { create } from 'zustand';
 import { mediaApi } from '../api/mediaApi';
 
+const EXTENSION_MIME: Record<string, string> = {
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+  '.heic': 'image/heic', '.heif': 'image/heif',
+  '.mp4': 'video/mp4', '.mov': 'video/quicktime', '.m4v': 'video/x-m4v',
+};
+
+function inferContentType(file: File): string {
+  if (file.type && file.type !== 'application/octet-stream') return file.type;
+  const ext = '.' + file.name.split('.').pop()?.toLowerCase();
+  return EXTENSION_MIME[ext] || 'application/octet-stream';
+}
+
 export type UploadStatus = 'queued' | 'requesting' | 'uploading' | 'completing' | 'done' | 'error';
 
 export interface UploadItem {
@@ -218,7 +230,7 @@ export const useUploadStore = create<UploadStore>((set, get) => {
       let mediaId: string;
       let uploadUrl: string;
 
-      const resp = await mediaApi.requestUpload(item.file.name, item.file.type, item.file.size);
+      const resp = await mediaApi.requestUpload(item.file.name, inferContentType(item.file), item.file.size);
       mediaId = resp.mediaId;
       uploadUrl = resp.uploadUrl;
 
@@ -248,7 +260,7 @@ export const useUploadStore = create<UploadStore>((set, get) => {
       const batch = items.slice(i, i + BATCH_SAS_SIZE);
       const requests = batch.map(item => ({
         fileName: item.file.name,
-        contentType: item.file.type,
+        contentType: inferContentType(item.file),
         sizeBytes: item.file.size,
       }));
 
