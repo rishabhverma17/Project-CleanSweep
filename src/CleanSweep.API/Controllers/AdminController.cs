@@ -242,9 +242,8 @@ public class AdminController : ControllerBase
                         var exists = await blobService.ExistsAsync(storageOptions.OriginalsContainer, item.OriginalBlobPath, CancellationToken.None);
                         if (!exists)
                         {
-                            // Blob never made it — soft delete this orphan
-                            item.IsDeleted = true;
-                            item.DeletedAt = DateTimeOffset.UtcNow;
+                            // Blob never made it — mark Failed, NEVER soft-delete (prevents data loss via cleanup)
+                            item.ProcessingStatus = ProcessingStatus.Failed;
                             skipped++;
                             continue;
                         }

@@ -249,22 +249,14 @@ public class ProcessingBackgroundService : BackgroundService
                 var cleanupRepo = cleanupScope.ServiceProvider.GetRequiredService<IMediaRepository>();
                 var orphanItem = await cleanupRepo.GetByIdAsync(item.Message.MediaId, CancellationToken.None);
 
-                if (orphanItem != null && orphanItem.UploadedAt < DateTimeOffset.UtcNow.AddHours(-1))
+                if (orphanItem != null)
                 {
-                    _logger.LogWarning("Blob not found for old item {MediaId} (uploaded {UploadedAt}), soft-deleting orphan",
+                    // SAFETY: Never auto-delete blobs/records from processing pipeline.
+                    // Mark as Failed so admin can investigate. Only explicit user delete triggers cleanup.
+                    orphanItem.ProcessingStatus = ProcessingStatus.Failed;
+                    await cleanupRepo.UpdateAsync(orphanItem, CancellationToken.None);
+                    _logger.LogWarning("Blob not found for {MediaId} (uploaded {UploadedAt}), marked as Failed (not deleted)",
                         item.Message.MediaId, orphanItem.UploadedAt);
-                    await cleanupRepo.SoftDeleteAsync(item.Message.MediaId, CancellationToken.None);
-                }
-                else
-                {
-                    // Recent item — mark as Failed, don't delete. Might still be uploading.
-                    if (orphanItem != null)
-                    {
-                        orphanItem.ProcessingStatus = ProcessingStatus.Failed;
-                        await cleanupRepo.UpdateAsync(orphanItem, CancellationToken.None);
-                        _logger.LogWarning("Blob not found for recent item {MediaId} (uploaded {UploadedAt}), marked as Failed (not deleted)",
-                            item.Message.MediaId, orphanItem?.UploadedAt);
-                    }
                 }
             }
             catch (Exception innerEx)

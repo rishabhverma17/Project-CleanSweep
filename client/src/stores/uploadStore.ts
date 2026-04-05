@@ -93,39 +93,60 @@ export const useUploadStore = create<UploadStore>((set, get) => {
   // Instead of calling completeUpload per file, queue mediaIds and flush in batches
   const completeQueue: { mediaId: string; itemId: string }[] = [];
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
+  let isFlushing = false; // Guard against concurrent flushes
 
   const flushCompleteQueue = async () => {
-    if (completeQueue.length === 0) return;
-    const batch = completeQueue.splice(0, COMPLETE_BATCH_SIZE);
-    const mediaIds = batch.map(b => b.mediaId);
-    let success = false;
+    if (isFlushing || completeQueue.length === 0) return;
+    isFlushing = true;
     try {
-      await mediaApi.completeUploadBatch(mediaIds);
-      success = true;
-    } catch {
-      // Fall back to individual calls
-      for (const { mediaId } of batch) {
-        try { await mediaApi.completeUpload(mediaId); } catch { }
-      }
-      success = true; // individual calls attempted
-    }
+      // Take a snapshot but DON'T remove from queue yet — only remove after confirmed
+      const batch = completeQueue.slice(0, COMPLETE_BATCH_SIZE);
+      const mediaIds = batch.map(b => b.mediaId);
 
-    if (!success) {
-      // Put items back in queue for retry
-      completeQueue.unshift(...batch);
-      return;
-    }
-
-    // Mark items as done
-    for (const { mediaId, itemId } of batch) {
-      updateItem(itemId, { status: 'done', mediaId });
-      for (const [, cb] of get()._onFileCompleteCallbacks) {
-        const item = get()._itemMap.get(itemId);
-        try { cb(mediaId, item?.folderGroup); } catch { }
+      const confirmed: Set<string> = new Set();
+      try {
+        const results = await mediaApi.completeUploadBatch(mediaIds);
+        // Only confirm items the server actually completed (response contains succeeded mediaIds)
+        const succeededIds = new Set(
+          Array.isArray(results) ? results.map((r: any) => String(r.mediaId)) : []
+        );
+        for (const b of batch) {
+          if (succeededIds.has(b.mediaId)) confirmed.add(b.itemId);
+        }
+      } catch {
+        // Batch failed — fall back to individual calls, track each result
+        for (const { mediaId, itemId } of batch) {
+          try {
+            await mediaApi.completeUpload(mediaId);
+            confirmed.add(itemId);
+          } catch {
+            // This item genuinely failed — leave in queue for retry
+          }
+        }
       }
+
+      // Remove only confirmed items from the queue
+      for (let i = completeQueue.length - 1; i >= 0; i--) {
+        if (confirmed.has(completeQueue[i].itemId)) {
+          completeQueue.splice(i, 1);
+        }
+      }
+
+      // Mark confirmed items as done
+      for (const { mediaId, itemId } of batch) {
+        if (!confirmed.has(itemId)) continue;
+        updateItem(itemId, { status: 'done', mediaId });
+        for (const [, cb] of get()._onFileCompleteCallbacks) {
+          const item = get()._itemMap.get(itemId);
+          try { cb(mediaId, item?.folderGroup); } catch { }
+        }
+      }
+
+      // Retry remaining items in queue
+      if (completeQueue.length > 0) scheduleFlush();
+    } finally {
+      isFlushing = false;
     }
-    // If more in queue, schedule another flush
-    if (completeQueue.length > 0) scheduleFlush();
   };
 
   const scheduleFlush = () => {
@@ -208,7 +229,7 @@ export const useUploadStore = create<UploadStore>((set, get) => {
         const xhr = new XMLHttpRequest();
         xhr.open('PUT', sasUrl);
         xhr.setRequestHeader('x-ms-blob-type', 'BlockBlob');
-        xhr.setRequestHeader('Content-Type', file.type);
+        xhr.setRequestHeader('Content-Type', inferContentType(file));
 
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) {
@@ -425,16 +446,15 @@ export const useUploadStore = create<UploadStore>((set, get) => {
           },
         });
 
-        // Prefetch SAS URLs in background, then start queue
+        // Prefetch SAS URLs then start processing — NOT before, to avoid
+        // creating duplicate MediaItems (prefetch + individual request race)
         prefetchSasUrls(newItems).then(cache => {
           sasCache = cache;
           get()._processQueue();
         }).catch(() => {
+          // Prefetch failed — process without cache (individual requests)
           get()._processQueue();
         });
-
-        // Start processing immediately (first items will use individual SAS requests)
-        get()._processQueue();
       });
     },
 
@@ -453,6 +473,12 @@ export const useUploadStore = create<UploadStore>((set, get) => {
           queued.push(item);
           active++;
         }
+      }
+
+      // Mark as 'requesting' synchronously BEFORE async upload to prevent
+      // double-dispatch when _processQueue is called again before upload starts
+      for (const item of queued) {
+        updateItem(item.id, { status: 'requesting' });
       }
 
       for (const item of queued) {

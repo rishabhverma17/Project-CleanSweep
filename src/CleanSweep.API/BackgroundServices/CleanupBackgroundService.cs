@@ -17,7 +17,7 @@ public class CleanupBackgroundService : BackgroundService
     private readonly ILogger<CleanupBackgroundService> _logger;
 
     private static readonly TimeSpan PollInterval = TimeSpan.FromHours(6);
-    private static readonly TimeSpan MinDeleteAge = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan MinDeleteAge = TimeSpan.FromHours(24);
     private const int BatchSize = 500;
 
     public CleanupBackgroundService(
