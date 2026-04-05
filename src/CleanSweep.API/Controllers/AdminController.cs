@@ -175,11 +175,9 @@ public class AdminController : ControllerBase
     [HttpPost("reprocess-stuck")]
     public async Task<ActionResult> ReprocessStuck(CancellationToken ct)
     {
-        // Find items that are stuck: not deleted, no thumbnail, and status is not Complete
+        // Find items with no thumbnail regardless of status
         var count = await _db.MediaItems
-            .Where(m => !m.IsDeleted
-                && m.ThumbnailBlobPath == null
-                && m.ProcessingStatus != ProcessingStatus.Complete)
+            .Where(m => !m.IsDeleted && m.ThumbnailBlobPath == null)
             .CountAsync(ct);
 
         if (count == 0)
@@ -195,9 +193,7 @@ public class AdminController : ControllerBase
                 var queue = scope.ServiceProvider.GetRequiredService<IMediaProcessingQueue>();
 
                 var items = await db.MediaItems
-                    .Where(m => !m.IsDeleted
-                        && m.ThumbnailBlobPath == null
-                        && m.ProcessingStatus != ProcessingStatus.Complete)
+                    .Where(m => !m.IsDeleted && m.ThumbnailBlobPath == null)
                     .ToListAsync();
 
                 foreach (var item in items)
@@ -230,11 +226,13 @@ public class AdminController : ControllerBase
     [HttpPost("fix-stuck-status")]
     public async Task<ActionResult> FixStuckStatus(CancellationToken ct)
     {
-        // Fix items that have thumbnails but status is still Pending/Processing
+        // Only fix items that have thumbnails AND playback but status is still wrong
         var fixedCount = await _db.MediaItems
             .Where(m => !m.IsDeleted
                 && m.ThumbnailBlobPath != null
-                && (m.ProcessingStatus == ProcessingStatus.Pending || m.ProcessingStatus == ProcessingStatus.Processing || m.ProcessingStatus == ProcessingStatus.Uploading))
+                && m.PlaybackBlobPath != null
+                && m.ProcessingStatus != ProcessingStatus.Complete
+                && m.ProcessingStatus != ProcessingStatus.Failed)
             .ExecuteUpdateAsync(s => s.SetProperty(m => m.ProcessingStatus, ProcessingStatus.Complete), ct);
 
         _logger.LogInformation("Fixed {Count} stuck media items to Complete status", fixedCount);
