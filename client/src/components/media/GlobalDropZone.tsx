@@ -4,6 +4,8 @@ import { useUpload } from '../../hooks/useUpload';
 import { useQueryClient } from '@tanstack/react-query';
 import { FolderOpen } from 'lucide-react';
 
+const SUPPORTED_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.heic', '.heif', '.mp4', '.mov', '.m4v', '.flv']);
+
 interface Props {
   children: ReactNode;
 }
@@ -30,9 +32,11 @@ export function GlobalDropZone({ children }: Props) {
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    const files = Array.from(e.dataTransfer.files).filter(f =>
-      f.type.startsWith('image/') || f.type.startsWith('video/')
-    );
+    const files = Array.from(e.dataTransfer.files).filter(f => {
+      if (f.type.startsWith('image/') || f.type.startsWith('video/')) return true;
+      const ext = '.' + f.name.split('.').pop()?.toLowerCase();
+      return SUPPORTED_EXTENSIONS.has(ext);
+    });
     if (files.length > 0) {
       startUpload(files);
       navigate('/upload');
