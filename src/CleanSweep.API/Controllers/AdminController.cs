@@ -67,6 +67,30 @@ public class AdminController : ControllerBase
         });
     }
 
+    [HttpGet("activity")]
+    public async Task<ActionResult> GetRecentActivity(CancellationToken ct)
+    {
+        // Last 30 items that changed status (ordered by upload time desc, showing pipeline activity)
+        var recentItems = await _db.MediaItems
+            .Where(m => !m.IsDeleted)
+            .OrderByDescending(m => m.UploadedAt)
+            .Take(30)
+            .Select(m => new
+            {
+                m.Id,
+                m.FileName,
+                Status = m.ProcessingStatus.ToString(),
+                m.ContentType,
+                HasThumbnail = m.ThumbnailBlobPath != null,
+                HasPlayback = m.PlaybackBlobPath != null,
+                SizeMB = Math.Round(m.FileSizeBytes / 1024.0 / 1024.0, 1),
+                m.UploadedAt
+            })
+            .ToListAsync(ct);
+
+        return Ok(recentItems);
+    }
+
     [HttpGet("users")]
     public async Task<ActionResult> GetUsers(CancellationToken ct)
     {

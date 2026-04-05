@@ -2,13 +2,97 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { adminApi, quotaApi } from '../api/familyApi';
 import { useTrackedTask } from '../hooks/useTrackedTask';
-import { RefreshCw, AlertTriangle } from 'lucide-react';
+import { RefreshCw, AlertTriangle, Terminal } from 'lucide-react';
 
 function formatBytes(bytes: number): string {
   if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
   if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   if (bytes > 0) return `${(bytes / 1024).toFixed(0)} KB`;
   return '0 KB';
+}
+
+const STATUS_COLORS: Record<string, string> = {
+  Uploading: '#60a5fa',
+  Pending: '#a78bfa',
+  Processing: '#fbbf24',
+  Transcoding: '#f97316',
+  Complete: '#4ade80',
+  Failed: '#f87171',
+};
+
+function ActivityFeed() {
+  const { data: activity } = useQuery({
+    queryKey: ['admin-activity'],
+    queryFn: adminApi.getActivity,
+    refetchInterval: 5000,
+  });
+  const [expanded, setExpanded] = useState(true);
+
+  if (!activity) return null;
+
+  return (
+    <div className="mb-8">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-2 text-sm font-medium mb-2"
+        style={{ color: 'var(--text-primary)' }}
+      >
+        <Terminal size={16} />
+        Recent Activity (last 30 items)
+        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{expanded ? '▼' : '▶'}</span>
+      </button>
+      {expanded && (
+        <div
+          className="rounded-xl overflow-hidden font-mono text-xs"
+          style={{ background: '#0d1117', border: '1px solid #30363d' }}
+        >
+          <div className="overflow-y-auto" style={{ maxHeight: '320px' }}>
+            <table className="w-full">
+              <thead>
+                <tr style={{ borderBottom: '1px solid #30363d', color: '#8b949e' }}>
+                  <th className="text-left px-3 py-2 font-normal">Status</th>
+                  <th className="text-left px-3 py-2 font-normal">File</th>
+                  <th className="text-left px-3 py-2 font-normal">Type</th>
+                  <th className="text-left px-3 py-2 font-normal">Size</th>
+                  <th className="text-left px-3 py-2 font-normal">Thumb</th>
+                  <th className="text-left px-3 py-2 font-normal">Play</th>
+                  <th className="text-left px-3 py-2 font-normal">Uploaded</th>
+                </tr>
+              </thead>
+              <tbody>
+                {activity.map((item) => (
+                  <tr key={item.id} style={{ borderBottom: '1px solid #21262d' }}>
+                    <td className="px-3 py-1.5">
+                      <span style={{ color: STATUS_COLORS[item.status] || '#8b949e' }}>
+                        {item.status === 'Processing' ? '⚙ ' : item.status === 'Complete' ? '✓ ' : item.status === 'Failed' ? '✗ ' : item.status === 'Pending' ? '◌ ' : item.status === 'Uploading' ? '↑ ' : ''}
+                        {item.status}
+                      </span>
+                    </td>
+                    <td className="px-3 py-1.5 truncate max-w-[200px]" style={{ color: '#e6edf3' }}>{item.fileName}</td>
+                    <td className="px-3 py-1.5" style={{ color: '#8b949e' }}>{item.contentType.split('/')[1] || item.contentType}</td>
+                    <td className="px-3 py-1.5" style={{ color: '#8b949e' }}>{item.sizeMB} MB</td>
+                    <td className="px-3 py-1.5">
+                      <span style={{ color: item.hasThumbnail ? '#4ade80' : '#f87171' }}>{item.hasThumbnail ? '✓' : '✗'}</span>
+                    </td>
+                    <td className="px-3 py-1.5">
+                      <span style={{ color: item.hasPlayback ? '#4ade80' : '#f87171' }}>{item.hasPlayback ? '✓' : '✗'}</span>
+                    </td>
+                    <td className="px-3 py-1.5" style={{ color: '#8b949e' }}>
+                      {new Date(item.uploadedAt).toLocaleTimeString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="px-3 py-1.5 text-[10px] flex justify-between" style={{ borderTop: '1px solid #30363d', color: '#484f58' }}>
+            <span>Auto-refreshing every 5s</span>
+            <span>{activity.length} items</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function AdminPage() {
@@ -194,6 +278,9 @@ export function AdminPage() {
           <AlertTriangle size={14} /> Reset All Data
         </button>
       </div>
+
+      {/* Recent Activity — terminal style */}
+      <ActivityFeed />
 
       {/* Users */}
       <h3 className="text-lg font-medium mb-3" style={{ color: 'var(--text-primary)' }}>Users & Quotas</h3>

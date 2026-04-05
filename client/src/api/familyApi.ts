@@ -106,4 +106,11 @@ export const adminApi = {
     const { data } = await api.post('/api/admin/purge-failed');
     return data as { message: string };
   },
+  getActivity: async () => {
+    const { data } = await api.get('/api/admin/activity');
+    return data as {
+      id: string; fileName: string; status: string; contentType: string;
+      hasThumbnail: boolean; hasPlayback: boolean; sizeMB: number; uploadedAt: string;
+    }[];
+  },
 };
