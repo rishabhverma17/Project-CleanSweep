@@ -27,16 +27,40 @@ public class VideoThumbnailGenerator : IThumbnailGenerator
             await using (var fs = File.Create(tempInput))
                 await source.CopyToAsync(fs, ct);
 
-            var args = $"-i \"{tempInput}\" -ss 00:00:02 -frames:v 1 -vf scale={maxDimension}:-1 -f image2 \"{tempOutput}\"";
-            var process = Process.Start(new ProcessStartInfo("ffmpeg", args) { RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true });
+            // Try at 2s first, fall back to 1s, then first frame (0s) for short videos
+            var seekTimes = new[] { "00:00:02", "00:00:01", "00:00:00" };
+            var success = false;
 
-            if (process == null) throw new InvalidOperationException("Failed to start FFmpeg process.");
-
-            await process.WaitForExitAsync(ct);
-            if (process.ExitCode != 0)
+            foreach (var seekTime in seekTimes)
             {
+                // Delete previous attempt output if any
+                if (File.Exists(tempOutput)) File.Delete(tempOutput);
+
+                var args = $"-y -i \"{tempInput}\" -ss {seekTime} -frames:v 1 -vf scale={maxDimension}:-1 -f image2 \"{tempOutput}\"";
+                var process = Process.Start(new ProcessStartInfo("ffmpeg", args)
+                {
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                });
+
+                if (process == null) throw new InvalidOperationException("Failed to start FFmpeg process.");
+
+                await process.WaitForExitAsync(ct);
+
+                if (process.ExitCode == 0 && File.Exists(tempOutput) && new FileInfo(tempOutput).Length > 0)
+                {
+                    success = true;
+                    break;
+                }
+
                 var err = await process.StandardError.ReadToEndAsync(ct);
-                _logger.LogWarning("FFmpeg exited with code {ExitCode}: {Error}", process.ExitCode, err);
+                _logger.LogWarning("FFmpeg thumbnail at {SeekTime} failed (exit={ExitCode}): {Error}", seekTime, process.ExitCode, err);
+            }
+
+            if (!success)
+            {
+                throw new InvalidOperationException($"FFmpeg failed to generate thumbnail for video after all seek attempts.");
             }
 
             var output = new MemoryStream();
@@ -47,8 +71,8 @@ public class VideoThumbnailGenerator : IThumbnailGenerator
         }
         finally
         {
-            File.Delete(tempInput);
-            File.Delete(tempOutput);
+            if (File.Exists(tempInput)) File.Delete(tempInput);
+            if (File.Exists(tempOutput)) File.Delete(tempOutput);
         }
     }
 }

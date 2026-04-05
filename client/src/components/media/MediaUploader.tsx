@@ -9,18 +9,6 @@ import type { Album as AlbumType } from '../../types/media';
 
 const SUPPORTED_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.heic', '.heif', '.mp4', '.mov', '.m4v']);
 
-const EXTENSION_MIME_MAP: Record<string, string> = {
-  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
-  '.heic': 'image/heic', '.heif': 'image/heif',
-  '.mp4': 'video/mp4', '.mov': 'video/quicktime', '.m4v': 'video/x-m4v',
-};
-
-function getContentType(file: File): string {
-  if (file.type && file.type !== 'application/octet-stream') return file.type;
-  const ext = '.' + file.name.split('.').pop()?.toLowerCase();
-  return EXTENSION_MIME_MAP[ext] || 'application/octet-stream';
-}
-
 function filterSupportedFiles(files: File[]): File[] {
   return files.filter(f => {
     const ext = '.' + f.name.split('.').pop()?.toLowerCase();
