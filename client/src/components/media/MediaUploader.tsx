@@ -7,7 +7,7 @@ import { albumApi } from '../../api/albumApi';
 import { FolderOpen, FolderUp, RefreshCw, Album, ArrowRight, ChevronDown, Search } from 'lucide-react';
 import type { Album as AlbumType } from '../../types/media';
 
-const SUPPORTED_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.heic', '.heif', '.mp4', '.mov', '.m4v']);
+const SUPPORTED_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.heic', '.heif', '.mp4', '.mov', '.m4v', '.flv']);
 
 function filterSupportedFiles(files: File[]): File[] {
   return files.filter(f => {
@@ -157,7 +157,7 @@ export function MediaUploader({ onComplete }: Props) {
     onDrop,
     accept: {
       'image/*': ['.jpg', '.jpeg', '.png', '.heic', '.heif'],
-      'video/*': ['.mp4', '.mov', '.m4v'],
+      'video/*': ['.mp4', '.mov', '.m4v', '.flv'],
     },
   });
 
@@ -178,7 +178,7 @@ export function MediaUploader({ onComplete }: Props) {
           <div>
             <p className="text-zinc-300">Drag & drop photos and videos here</p>
             <p className="text-zinc-500 text-sm mt-1">or click to browse files</p>
-            <p className="text-zinc-600 text-xs mt-3">Supports: JPG, PNG, HEIC, MP4, MOV</p>
+            <p className="text-zinc-600 text-xs mt-3">Supports: JPG, PNG, HEIC, MP4, MOV, FLV</p>
           </div>
         )}
       </div>

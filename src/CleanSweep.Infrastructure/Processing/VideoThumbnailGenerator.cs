@@ -10,7 +10,7 @@ public class VideoThumbnailGenerator : IThumbnailGenerator
 
     private static readonly HashSet<string> SupportedTypes = new(StringComparer.OrdinalIgnoreCase)
     {
-        "video/mp4", "video/quicktime", "video/x-m4v"
+        "video/mp4", "video/quicktime", "video/x-m4v", "video/x-flv"
     };
 
     public VideoThumbnailGenerator(ILogger<VideoThumbnailGenerator> logger) => _logger = logger;

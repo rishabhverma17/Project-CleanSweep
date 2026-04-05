@@ -5,6 +5,7 @@ const EXTENSION_MIME: Record<string, string> = {
   '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
   '.heic': 'image/heic', '.heif': 'image/heif',
   '.mp4': 'video/mp4', '.mov': 'video/quicktime', '.m4v': 'video/x-m4v',
+  '.flv': 'video/x-flv',
 };
 
 function inferContentType(file: File): string {
