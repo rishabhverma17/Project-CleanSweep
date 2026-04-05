@@ -402,4 +402,28 @@ public class AdminController : ControllerBase
 
         return Accepted(new { message = $"Cleaning up {count} soft-deleted item(s) in background." });
     }
+
+    [HttpGet("soft-deleted")]
+    public async Task<ActionResult> GetSoftDeleted(CancellationToken ct)
+    {
+        var items = await _db.MediaItems
+            .Where(m => m.IsDeleted)
+            .OrderByDescending(m => m.DeletedAt)
+            .Take(100)
+            .Select(m => new
+            {
+                m.Id,
+                m.FileName,
+                m.ContentType,
+                Status = m.ProcessingStatus.ToString(),
+                SizeMB = Math.Round(m.FileSizeBytes / 1024.0 / 1024.0, 1),
+                HasThumbnail = m.ThumbnailBlobPath != null,
+                HasPlayback = m.PlaybackBlobPath != null,
+                m.UploadedAt,
+                m.DeletedAt
+            })
+            .ToListAsync(ct);
+
+        return Ok(items);
+    }
 }

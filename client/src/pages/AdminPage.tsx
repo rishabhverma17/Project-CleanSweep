@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { adminApi, quotaApi } from '../api/familyApi';
 import { useTrackedTask } from '../hooks/useTrackedTask';
-import { RefreshCw, AlertTriangle, Terminal } from 'lucide-react';
+import { RefreshCw, AlertTriangle, Terminal, Trash2, X } from 'lucide-react';
 
 function formatBytes(bytes: number): string {
   if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
@@ -95,12 +95,90 @@ function ActivityFeed() {
   );
 }
 
+function CleanupFlyout({ onClose, onCleanup }: { onClose: () => void; onCleanup: () => Promise<void> }) {
+  const { data: items, isLoading } = useQuery({
+    queryKey: ['admin-soft-deleted'],
+    queryFn: adminApi.getSoftDeleted,
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end" style={{ background: 'rgba(0,0,0,0.5)' }} onClick={onClose}>
+      <div
+        className="h-full w-full max-w-2xl flex flex-col"
+        style={{ background: '#0d1117', borderLeft: '1px solid #30363d' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 flex-shrink-0" style={{ borderBottom: '1px solid #30363d' }}>
+          <h3 className="text-sm font-medium flex items-center gap-2" style={{ color: '#e6edf3' }}>
+            <Trash2 size={16} style={{ color: '#fbbf24' }} />
+            Pending Cleanup ({items?.length ?? 0} items)
+          </h3>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={async () => { await onCleanup(); onClose(); }}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium transition"
+              style={{ background: '#fbbf24', color: '#0d1117' }}
+            >
+              Cleanup All
+            </button>
+            <button onClick={onClose} className="p-1 rounded hover:bg-white/10" style={{ color: '#8b949e' }}>
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+
+        {/* Table */}
+        <div className="flex-1 overflow-y-auto font-mono text-xs">
+          {isLoading ? (
+            <div className="py-10 text-center" style={{ color: '#8b949e' }}>Loading...</div>
+          ) : !items?.length ? (
+            <div className="py-10 text-center" style={{ color: '#8b949e' }}>No soft-deleted items</div>
+          ) : (
+            <table className="w-full">
+              <thead>
+                <tr style={{ borderBottom: '1px solid #30363d', color: '#8b949e', position: 'sticky', top: 0, background: '#0d1117' }}>
+                  <th className="text-left px-3 py-2 font-normal">File</th>
+                  <th className="text-left px-3 py-2 font-normal">Type</th>
+                  <th className="text-left px-3 py-2 font-normal">Size</th>
+                  <th className="text-left px-3 py-2 font-normal">Status</th>
+                  <th className="text-left px-3 py-2 font-normal">Thumb</th>
+                  <th className="text-left px-3 py-2 font-normal">Deleted</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((item) => (
+                  <tr key={item.id} style={{ borderBottom: '1px solid #21262d' }}>
+                    <td className="px-3 py-1.5 truncate max-w-[220px]" style={{ color: '#e6edf3' }}>{item.fileName}</td>
+                    <td className="px-3 py-1.5" style={{ color: '#8b949e' }}>{item.contentType.split('/')[1] || item.contentType}</td>
+                    <td className="px-3 py-1.5" style={{ color: '#8b949e' }}>{item.sizeMB} MB</td>
+                    <td className="px-3 py-1.5">
+                      <span style={{ color: STATUS_COLORS[item.status] || '#8b949e' }}>{item.status}</span>
+                    </td>
+                    <td className="px-3 py-1.5">
+                      <span style={{ color: item.hasThumbnail ? '#4ade80' : '#f87171' }}>{item.hasThumbnail ? '✓' : '✗'}</span>
+                    </td>
+                    <td className="px-3 py-1.5" style={{ color: '#8b949e' }}>
+                      {item.deletedAt ? new Date(item.deletedAt).toLocaleString() : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function AdminPage() {
   const queryClient = useQueryClient();
   const { runTask } = useTrackedTask();
   const { data: users, isLoading } = useQuery({ queryKey: ['admin-users'], queryFn: adminApi.getUsers });
   const [editingQuota, setEditingQuota] = useState<{ userId: string; displayName: string; current: number } | null>(null);
   const [quotaInput, setQuotaInput] = useState('');
+  const [showCleanupFlyout, setShowCleanupFlyout] = useState(false);
 
   const handleReset = async () => {
     if (!confirm('DELETE ALL DATA including blobs? This cannot be undone.')) return;
@@ -271,8 +349,8 @@ export function AdminPage() {
             Purge {stats.failed} Failed
           </button>
         )}
-        <button onClick={handleTriggerCleanup} className="px-4 py-2 rounded-lg text-sm transition flex items-center gap-1.5" style={{ background: 'var(--card-bg)', color: '#fbbf24', border: '1px solid var(--border)' }}>
-          Cleanup Blobs {stats?.softDeleted ? `(${stats.softDeleted})` : ''}
+        <button onClick={() => setShowCleanupFlyout(true)} className="px-4 py-2 rounded-lg text-sm transition flex items-center gap-1.5" style={{ background: 'var(--card-bg)', color: '#fbbf24', border: '1px solid var(--border)' }}>
+          <Trash2 size={14} /> Cleanup Blobs {stats?.softDeleted ? `(${stats.softDeleted})` : ''}
         </button>
         <button onClick={handleReset} className="px-4 py-2 bg-red-800 hover:bg-red-700 rounded-lg text-sm text-white transition flex items-center gap-1.5">
           <AlertTriangle size={14} /> Reset All Data
@@ -352,6 +430,9 @@ export function AdminPage() {
           </div>
         </div>
       )}
+
+      {/* Soft-Deleted Items Flyout */}
+      {showCleanupFlyout && <CleanupFlyout onClose={() => setShowCleanupFlyout(false)} onCleanup={handleTriggerCleanup} />}
     </div>
   );
 }

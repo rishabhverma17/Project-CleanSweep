@@ -113,4 +113,12 @@ export const adminApi = {
       hasThumbnail: boolean; hasPlayback: boolean; sizeMB: number; uploadedAt: string;
     }[];
   },
+  getSoftDeleted: async () => {
+    const { data } = await api.get('/api/admin/soft-deleted');
+    return data as {
+      id: string; fileName: string; contentType: string; status: string;
+      sizeMB: number; hasThumbnail: boolean; hasPlayback: boolean;
+      uploadedAt: string; deletedAt: string;
+    }[];
+  },
 };
