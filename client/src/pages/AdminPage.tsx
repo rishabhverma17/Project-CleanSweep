@@ -47,6 +47,13 @@ export function AdminPage() {
     });
   };
 
+  const handleResetProcessing = async () => {
+    await runTask('Resetting stuck processing items', async () => {
+      const result = await adminApi.resetProcessing();
+      alert(result.message);
+    });
+  };
+
   const handleTriggerCleanup = async () => {
     await runTask('Triggering blob cleanup', async () => {
       const result = await adminApi.triggerCleanup();
@@ -157,6 +164,11 @@ export function AdminPage() {
         <button onClick={handleFixStuck} className="px-4 py-2 rounded-lg text-sm transition flex items-center gap-1.5" style={{ background: 'var(--card-bg)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>
           Fix Stuck Statuses
         </button>
+        {stats && stats.processing > 10 && (
+          <button onClick={handleResetProcessing} className="px-4 py-2 rounded-lg text-sm transition flex items-center gap-1.5" style={{ background: 'var(--card-bg)', color: '#f87171', border: '1px solid var(--border)' }}>
+            Reset {stats.processing} Stuck Processing
+          </button>
+        )}
         {stats && stats.softDeleted > 0 && (
           <button onClick={handleTriggerCleanup} className="px-4 py-2 rounded-lg text-sm transition flex items-center gap-1.5" style={{ background: 'var(--card-bg)', color: '#fbbf24', border: '1px solid var(--border)' }}>
             Cleanup {stats.softDeleted} Blobs

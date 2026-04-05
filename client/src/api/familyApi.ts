@@ -98,4 +98,8 @@ export const adminApi = {
     const { data } = await api.post('/api/admin/trigger-cleanup');
     return data as { message: string };
   },
+  resetProcessing: async () => {
+    const { data } = await api.post('/api/admin/reset-processing');
+    return data as { message: string };
+  },
 };

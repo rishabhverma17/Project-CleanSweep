@@ -241,6 +241,54 @@ public class AdminController : ControllerBase
         return Ok(new { message = $"Fixed {fixedCount} stuck item(s)." });
     }
 
+    [HttpPost("reset-processing")]
+    public async Task<ActionResult> ResetProcessing(CancellationToken ct)
+    {
+        // Reset items stuck at Processing back to Pending and re-queue them
+        var stuckItems = await _db.MediaItems
+            .Where(m => !m.IsDeleted && m.ProcessingStatus == ProcessingStatus.Processing)
+            .ToListAsync(ct);
+
+        if (stuckItems.Count == 0) return Ok(new { message = "No stuck processing items found." });
+
+        foreach (var item in stuckItems)
+            item.ProcessingStatus = ProcessingStatus.Pending;
+        await _db.SaveChangesAsync(ct);
+
+        // Queue them in background
+        var scopeFactory = _scopeFactory;
+        var count = stuckItems.Count;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var scope = scopeFactory.CreateScope();
+                var queue = scope.ServiceProvider.GetRequiredService<IMediaProcessingQueue>();
+
+                foreach (var item in stuckItems)
+                {
+                    await queue.EnqueueAsync(new ProcessingMessage
+                    {
+                        MediaId = item.Id,
+                        BlobPath = item.OriginalBlobPath,
+                        ContentType = item.ContentType,
+                        FileName = item.FileName,
+                        UserId = item.UserId,
+                        CorrelationId = Guid.NewGuid().ToString("N")
+                    });
+                }
+
+                _logger.LogInformation("Re-queued {Count} stuck processing items", count);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to re-queue stuck items");
+            }
+        });
+
+        return Accepted(new { message = $"Reset {count} stuck item(s) from Processing → Pending and re-queuing." });
+    }
+
     [HttpPost("trigger-cleanup")]
     public async Task<ActionResult> TriggerCleanup(CancellationToken ct)
     {

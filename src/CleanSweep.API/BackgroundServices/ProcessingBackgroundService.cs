@@ -247,6 +247,27 @@ public class ProcessingBackgroundService : BackgroundService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error processing {MediaId}", item.Message.MediaId);
+
+            // Set status to Failed so item doesn't stay stuck at Processing forever
+            try
+            {
+                using var errorScope = _scopeFactory.CreateScope();
+                var errorRepo = errorScope.ServiceProvider.GetRequiredService<IMediaRepository>();
+                var failedItem = await errorRepo.GetByIdAsync(item.Message.MediaId, CancellationToken.None);
+                if (failedItem != null && failedItem.ProcessingStatus == ProcessingStatus.Processing)
+                {
+                    failedItem.ProcessingStatus = ProcessingStatus.Failed;
+                    await errorRepo.UpdateAsync(failedItem, CancellationToken.None);
+                    _logger.LogWarning("Set {MediaId} to Failed status after processing error", item.Message.MediaId);
+                }
+            }
+            catch (Exception innerEx)
+            {
+                _logger.LogError(innerEx, "Failed to update status to Failed for {MediaId}", item.Message.MediaId);
+            }
+
+            // Complete the queue message so it doesn't retry endlessly
+            try { await _queue.CompleteAsync(item.MessageId, item.PopReceipt, CancellationToken.None); } catch { }
         }
         finally
         {

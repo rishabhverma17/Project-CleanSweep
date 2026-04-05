@@ -95,7 +95,7 @@ public class MediaRepository : IMediaRepository
     {
         var cutoff = DateTimeOffset.UtcNow - olderThan;
         return await _db.MediaItems
-            .Where(m => m.IsDeleted && m.DeletedAt != null && m.DeletedAt < cutoff)
+            .Where(m => m.IsDeleted && (m.DeletedAt == null || m.DeletedAt < cutoff))
             .OrderBy(m => m.DeletedAt)
             .Take(limit)
             .ToListAsync(ct);
