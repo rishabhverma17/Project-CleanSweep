@@ -46,6 +46,80 @@ const INITIAL_RETRY_DELAY = 1000;
 const PROGRESS_THROTTLE_MS = 500;
 const COMPLETE_FLUSH_INTERVAL = 2000; // Flush complete queue every 2 seconds
 const COMPLETE_BATCH_SIZE = 20; // Max items per complete-batch call
+const STALL_TIMEOUT_MS = 60_000; // Consider an upload stalled if no progress for 60s
+
+// --- Wake Lock + Visibility Recovery ---
+// Prevents macOS/browser from suspending the tab during long uploads
+let wakeLockSentinel: WakeLockSentinel | null = null;
+
+async function acquireWakeLock() {
+  if (wakeLockSentinel) return; // already held
+  try {
+    if ('wakeLock' in navigator) {
+      wakeLockSentinel = await navigator.wakeLock.request('screen');
+      wakeLockSentinel.addEventListener('release', () => { wakeLockSentinel = null; });
+    }
+  } catch { /* Wake Lock not supported or denied — non-fatal */ }
+}
+
+function releaseWakeLock() {
+  wakeLockSentinel?.release().catch(() => {});
+  wakeLockSentinel = null;
+}
+
+// Re-acquire wake lock when tab becomes visible again (browser releases it on hide)
+function handleVisibilityChange() {
+  if (document.visibilityState !== 'visible') return;
+  const store = useUploadStore.getState();
+  if (!store.isUploading) return;
+
+  // Re-acquire wake lock (browser releases it when tab is hidden)
+  acquireWakeLock();
+
+  // Detect stalled uploads: items marked 'uploading' or 'requesting' with no recent progress
+  const now = Date.now();
+  let stalledCount = 0;
+  for (const item of store._itemMap.values()) {
+    if (item.status === 'uploading' || item.status === 'requesting') {
+      const lastProgress = store._progressTimers.get(item.id) || 0;
+      if (now - lastProgress > STALL_TIMEOUT_MS) {
+        // Reset to queued so _processQueue picks them up again with fresh SAS URLs
+        Object.assign(item, { status: 'queued', progress: 0, error: undefined });
+        stalledCount++;
+      }
+    }
+  }
+
+  if (stalledCount > 0) {
+    // Recompute summary after resetting stalled items
+    let queued = 0, uploading = 0, done = 0, error = 0;
+    for (const item of store._itemMap.values()) {
+      if (item.status === 'queued') queued++;
+      else if (item.status === 'uploading' || item.status === 'requesting' || item.status === 'completing') uploading++;
+      else if (item.status === 'done') done++;
+      else if (item.status === 'error') error++;
+    }
+    useUploadStore.setState({ summary: { total: store.summary.total, queued, uploading, done, error } });
+  }
+
+  // Always re-kick the queue on resume in case timers were throttled
+  store._processQueue();
+}
+
+function handleBeforeUnload(e: BeforeUnloadEvent) {
+  const store = useUploadStore.getState();
+  if (store.isUploading) {
+    e.preventDefault();
+    // Modern browsers ignore custom messages but still show a confirmation dialog
+    e.returnValue = 'Uploads are still in progress. Are you sure you want to leave?';
+  }
+}
+
+// Install global listeners once
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+  window.addEventListener('beforeunload', handleBeforeUnload);
+}
 
 // --- Summary counters (derived outside Zustand to avoid re-renders per file) ---
 interface UploadSummary {
@@ -158,7 +232,7 @@ export const useUploadStore = create<UploadStore>((set, get) => {
         get()._processQueue();
         for (const batch of get().batches) checkBatchComplete(batch.id);
         const s = get().summary;
-        if (s.queued === 0 && s.uploading === 0) set({ isUploading: false });
+        if (s.queued === 0 && s.uploading === 0) { set({ isUploading: false }); releaseWakeLock(); }
       });
     }, COMPLETE_FLUSH_INTERVAL);
   };
@@ -173,7 +247,7 @@ export const useUploadStore = create<UploadStore>((set, get) => {
         get()._processQueue();
         for (const batch of get().batches) checkBatchComplete(batch.id);
         const s = get().summary;
-        if (s.queued === 0 && s.uploading === 0) set({ isUploading: false });
+        if (s.queued === 0 && s.uploading === 0) { set({ isUploading: false }); releaseWakeLock(); }
       });
     } else {
       scheduleFlush();
@@ -392,6 +466,8 @@ export const useUploadStore = create<UploadStore>((set, get) => {
           },
         });
 
+        acquireWakeLock();
+
         // Start uploading immediately — each file gets its own SAS URL on demand
         get()._processQueue();
       });
@@ -429,6 +505,7 @@ export const useUploadStore = create<UploadStore>((set, get) => {
           const s = get().summary;
           if (s.queued === 0 && s.uploading === 0) {
             set({ isUploading: false });
+            releaseWakeLock();
           }
         });
       }
@@ -475,6 +552,7 @@ export const useUploadStore = create<UploadStore>((set, get) => {
     },
 
     clearAll: () => {
+      releaseWakeLock();
       set({
         _itemMap: new Map(),
         _itemOrder: [],
