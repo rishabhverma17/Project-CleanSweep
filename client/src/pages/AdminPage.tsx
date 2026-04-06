@@ -137,41 +137,43 @@ function CleanupFlyout({ onClose, onCleanup, totalCount }: { onClose: () => void
           ) : !items?.length ? (
             <div className="py-10 text-center" style={{ color: '#8b949e' }}>No soft-deleted items</div>
           ) : (
-            <table className="w-full" style={{ tableLayout: 'fixed' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid #30363d', color: '#8b949e', position: 'sticky', top: 0, background: '#0d1117' }}>
-                  <th className="text-left px-3 py-2 font-normal" style={{ width: '35%' }}>File</th>
-                  <th className="text-left px-3 py-2 font-normal" style={{ width: '10%' }}>Type</th>
-                  <th className="text-left px-3 py-2 font-normal" style={{ width: '10%' }}>Size</th>
-                  <th className="text-left px-3 py-2 font-normal" style={{ width: '12%' }}>Status</th>
-                  <th className="text-left px-3 py-2 font-normal" style={{ width: '8%' }}>Thumb</th>
-                  <th className="text-left px-3 py-2 font-normal" style={{ width: '25%' }}>Deleted</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((item) => (
-                  <tr key={item.id} style={{ borderBottom: '1px solid #21262d' }}>
-                    <td className="px-3 py-1.5 truncate" style={{ color: '#e6edf3' }}>{item.fileName}</td>
-                    <td className="px-3 py-1.5" style={{ color: '#8b949e' }}>{item.contentType.split('/')[1] || item.contentType}</td>
-                    <td className="px-3 py-1.5" style={{ color: '#8b949e' }}>{item.sizeMB} MB</td>
-                    <td className="px-3 py-1.5">
-                      <span style={{ color: STATUS_COLORS[item.status] || '#8b949e' }}>{item.status}</span>
-                    </td>
-                    <td className="px-3 py-1.5">
-                      <span style={{ color: item.hasThumbnail ? '#4ade80' : '#f87171' }}>{item.hasThumbnail ? '✓' : '✗'}</span>
-                    </td>
-                    <td className="px-3 py-1.5" style={{ color: '#8b949e' }}>
-                      {item.deletedAt ? new Date(item.deletedAt).toLocaleString() : '—'}
-                    </td>
+            <>
+              <table className="w-full" style={{ tableLayout: 'fixed' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid #30363d', color: '#8b949e', position: 'sticky', top: 0, background: '#0d1117' }}>
+                    <th className="text-left px-3 py-2 font-normal" style={{ width: '35%' }}>File</th>
+                    <th className="text-left px-3 py-2 font-normal" style={{ width: '10%' }}>Type</th>
+                    <th className="text-left px-3 py-2 font-normal" style={{ width: '10%' }}>Size</th>
+                    <th className="text-left px-3 py-2 font-normal" style={{ width: '12%' }}>Status</th>
+                    <th className="text-left px-3 py-2 font-normal" style={{ width: '8%' }}>Thumb</th>
+                    <th className="text-left px-3 py-2 font-normal" style={{ width: '25%' }}>Deleted</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-            {items.length < displayTotal && (
-              <div className="px-3 py-2 text-[10px] text-center" style={{ color: '#484f58', borderTop: '1px solid #21262d' }}>
-                Showing {items.length} of {displayTotal} items
-              </div>
-            )}
+                </thead>
+                <tbody>
+                  {items.map((item) => (
+                    <tr key={item.id} style={{ borderBottom: '1px solid #21262d' }}>
+                      <td className="px-3 py-1.5 truncate" style={{ color: '#e6edf3' }}>{item.fileName}</td>
+                      <td className="px-3 py-1.5" style={{ color: '#8b949e' }}>{item.contentType.split('/')[1] || item.contentType}</td>
+                      <td className="px-3 py-1.5" style={{ color: '#8b949e' }}>{item.sizeMB} MB</td>
+                      <td className="px-3 py-1.5">
+                        <span style={{ color: STATUS_COLORS[item.status] || '#8b949e' }}>{item.status}</span>
+                      </td>
+                      <td className="px-3 py-1.5">
+                        <span style={{ color: item.hasThumbnail ? '#4ade80' : '#f87171' }}>{item.hasThumbnail ? '✓' : '✗'}</span>
+                      </td>
+                      <td className="px-3 py-1.5" style={{ color: '#8b949e' }}>
+                        {item.deletedAt ? new Date(item.deletedAt).toLocaleString() : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {items.length < displayTotal && (
+                <div className="px-3 py-2 text-[10px] text-center" style={{ color: '#484f58', borderTop: '1px solid #21262d' }}>
+                  Showing {items.length} of {displayTotal} items
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
