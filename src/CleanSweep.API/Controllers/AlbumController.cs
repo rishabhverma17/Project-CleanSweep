@@ -16,13 +16,15 @@ public class AlbumController : ControllerBase
     private readonly AlbumService _albumService;
     private readonly IAlbumRepository _albumRepo;
     private readonly IBlobStorageService _blobService;
+    private readonly INotificationService _notificationService;
     private readonly StorageOptions _storageOptions;
 
-    public AlbumController(AlbumService albumService, IAlbumRepository albumRepo, IBlobStorageService blobService, IOptions<StorageOptions> storageOptions)
+    public AlbumController(AlbumService albumService, IAlbumRepository albumRepo, IBlobStorageService blobService, INotificationService notificationService, IOptions<StorageOptions> storageOptions)
     {
         _albumService = albumService;
         _albumRepo = albumRepo;
         _blobService = blobService;
+        _notificationService = notificationService;
         _storageOptions = storageOptions.Value;
     }
 
@@ -53,6 +55,7 @@ public class AlbumController : ControllerBase
     public async Task<ActionResult> DeleteAlbum(Guid albumId, [FromQuery] bool deleteMedia = false, CancellationToken ct = default)
     {
         await _albumService.DeleteAlbumAsync(albumId, deleteMedia, ct);
+        await _notificationService.BroadcastMediaChangedAsync(ct);
         return NoContent();
     }
 

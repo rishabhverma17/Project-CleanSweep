@@ -2,11 +2,13 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { albumApi } from '../api/albumApi';
+import { useTrackedTask } from '../hooks/useTrackedTask';
 import { FolderOpen, Trash2, EyeOff, Eye, Pencil, Lock } from 'lucide-react';
 
 export function AlbumsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { runTask } = useTrackedTask();
   const { data: albums, isLoading } = useQuery({
     queryKey: ['albums'],
     queryFn: albumApi.getAll,
@@ -31,9 +33,11 @@ export function AlbumsPage() {
     );
     if (!choice) return;
     const deleteMedia = choice.trim().toLowerCase() === 'all';
-    await albumApi.deleteAlbum(albumId, deleteMedia);
-    queryClient.invalidateQueries({ queryKey: ['albums'] });
-    if (deleteMedia) queryClient.invalidateQueries({ queryKey: ['media'] });
+    await runTask(`Deleting album "${albumName}"${deleteMedia ? ' and all media' : ''}`, async () => {
+      await albumApi.deleteAlbum(albumId, deleteMedia);
+      queryClient.invalidateQueries({ queryKey: ['albums'] });
+      if (deleteMedia) queryClient.invalidateQueries({ queryKey: ['media'] });
+    });
   };
 
   const handleToggleHidden = async (e: React.MouseEvent, album: { id: string; isHidden: boolean; isPasswordProtected: boolean }) => {

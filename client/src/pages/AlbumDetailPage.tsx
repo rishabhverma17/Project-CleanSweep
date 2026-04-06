@@ -199,8 +199,11 @@ export function AlbumDetailPage() {
     );
     if (!choice) return;
     const deleteMedia = choice.trim().toLowerCase() === 'all';
-    await albumApi.deleteAlbum(albumId, deleteMedia);
-    queryClient.invalidateQueries({ queryKey: ['albums'] });
+    await runTask(`Deleting album "${data.album.name}"${deleteMedia ? ' and all media' : ''}`, async () => {
+      await albumApi.deleteAlbum(albumId, deleteMedia);
+      queryClient.invalidateQueries({ queryKey: ['albums'] });
+      if (deleteMedia) queryClient.invalidateQueries({ queryKey: ['media'] });
+    });
     navigate('/albums');
   };
 
@@ -284,6 +287,20 @@ export function AlbumDetailPage() {
           >
             {selectMode ? <><Check size={14} className="inline mr-1" />{selectedIds.size} selected</> : 'Select'}
           </button>
+          {selectMode && (
+            <button
+              onClick={() => {
+                if (selectedIds.size === sortedMedia.length) {
+                  setSelectedIds(new Set());
+                } else {
+                  setSelectedIds(new Set(sortedMedia.map(m => m.id)));
+                }
+              }}
+              className="px-3 py-1.5 bg-zinc-800 text-zinc-400 hover:text-white rounded-md text-sm transition"
+            >
+              {selectedIds.size === sortedMedia.length ? 'Deselect All' : 'Select All'}
+            </button>
+          )}
           {selectMode && selectedIds.size > 0 && (
             <>
               <button onClick={handleDownloadSelected} className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 rounded-md text-sm text-white transition flex items-center gap-1">

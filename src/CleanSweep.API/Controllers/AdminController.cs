@@ -409,7 +409,7 @@ public class AdminController : ControllerBase
         var items = await _db.MediaItems
             .Where(m => m.IsDeleted)
             .OrderByDescending(m => m.DeletedAt)
-            .Take(100)
+            .Take(500)
             .Select(m => new
             {
                 m.Id,

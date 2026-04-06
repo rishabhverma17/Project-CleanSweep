@@ -132,6 +132,20 @@ export function GalleryPage() {
           >
             {selectMode ? <><Check size={14} className="inline mr-1" />{selectedIds.size} selected</> : 'Select'}
           </button>
+          {selectMode && (
+            <button
+              onClick={() => {
+                if (selectedIds.size === allItems.length) {
+                  setSelectedIds(new Set());
+                } else {
+                  setSelectedIds(new Set(allItems.map(m => m.id)));
+                }
+              }}
+              className="px-3 py-1.5 bg-zinc-800 text-zinc-400 hover:text-white rounded-md text-sm transition"
+            >
+              {selectedIds.size === allItems.length ? 'Deselect All' : 'Select All'}
+            </button>
+          )}
           {selectMode && selectedIds.size > 0 && (
             <>
               <button onClick={handleDownloadSelected} className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 rounded-md text-sm text-white transition flex items-center gap-1">

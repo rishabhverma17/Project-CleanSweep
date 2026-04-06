@@ -95,11 +95,13 @@ function ActivityFeed() {
   );
 }
 
-function CleanupFlyout({ onClose, onCleanup }: { onClose: () => void; onCleanup: () => Promise<void> }) {
+function CleanupFlyout({ onClose, onCleanup, totalCount }: { onClose: () => void; onCleanup: () => Promise<void>; totalCount?: number }) {
   const { data: items, isLoading } = useQuery({
     queryKey: ['admin-soft-deleted'],
     queryFn: adminApi.getSoftDeleted,
   });
+
+  const displayTotal = totalCount ?? items?.length ?? 0;
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end" style={{ background: 'rgba(0,0,0,0.5)' }} onClick={onClose}>
@@ -112,7 +114,7 @@ function CleanupFlyout({ onClose, onCleanup }: { onClose: () => void; onCleanup:
         <div className="flex items-center justify-between px-4 py-3 flex-shrink-0" style={{ borderBottom: '1px solid #30363d' }}>
           <h3 className="text-sm font-medium flex items-center gap-2" style={{ color: '#e6edf3' }}>
             <Trash2 size={16} style={{ color: '#fbbf24' }} />
-            Pending Cleanup ({items?.length ?? 0} items)
+            Pending Cleanup ({displayTotal} items)
           </h3>
           <div className="flex items-center gap-2">
             <button
@@ -135,21 +137,21 @@ function CleanupFlyout({ onClose, onCleanup }: { onClose: () => void; onCleanup:
           ) : !items?.length ? (
             <div className="py-10 text-center" style={{ color: '#8b949e' }}>No soft-deleted items</div>
           ) : (
-            <table className="w-full">
+            <table className="w-full" style={{ tableLayout: 'fixed' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid #30363d', color: '#8b949e', position: 'sticky', top: 0, background: '#0d1117' }}>
-                  <th className="text-left px-3 py-2 font-normal">File</th>
-                  <th className="text-left px-3 py-2 font-normal">Type</th>
-                  <th className="text-left px-3 py-2 font-normal">Size</th>
-                  <th className="text-left px-3 py-2 font-normal">Status</th>
-                  <th className="text-left px-3 py-2 font-normal">Thumb</th>
-                  <th className="text-left px-3 py-2 font-normal">Deleted</th>
+                  <th className="text-left px-3 py-2 font-normal" style={{ width: '35%' }}>File</th>
+                  <th className="text-left px-3 py-2 font-normal" style={{ width: '10%' }}>Type</th>
+                  <th className="text-left px-3 py-2 font-normal" style={{ width: '10%' }}>Size</th>
+                  <th className="text-left px-3 py-2 font-normal" style={{ width: '12%' }}>Status</th>
+                  <th className="text-left px-3 py-2 font-normal" style={{ width: '8%' }}>Thumb</th>
+                  <th className="text-left px-3 py-2 font-normal" style={{ width: '25%' }}>Deleted</th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((item) => (
                   <tr key={item.id} style={{ borderBottom: '1px solid #21262d' }}>
-                    <td className="px-3 py-1.5 truncate max-w-[220px]" style={{ color: '#e6edf3' }}>{item.fileName}</td>
+                    <td className="px-3 py-1.5 truncate" style={{ color: '#e6edf3' }}>{item.fileName}</td>
                     <td className="px-3 py-1.5" style={{ color: '#8b949e' }}>{item.contentType.split('/')[1] || item.contentType}</td>
                     <td className="px-3 py-1.5" style={{ color: '#8b949e' }}>{item.sizeMB} MB</td>
                     <td className="px-3 py-1.5">
@@ -165,6 +167,11 @@ function CleanupFlyout({ onClose, onCleanup }: { onClose: () => void; onCleanup:
                 ))}
               </tbody>
             </table>
+            {items.length < displayTotal && (
+              <div className="px-3 py-2 text-[10px] text-center" style={{ color: '#484f58', borderTop: '1px solid #21262d' }}>
+                Showing {items.length} of {displayTotal} items
+              </div>
+            )}
           )}
         </div>
       </div>
@@ -432,7 +439,7 @@ export function AdminPage() {
       )}
 
       {/* Soft-Deleted Items Flyout */}
-      {showCleanupFlyout && <CleanupFlyout onClose={() => setShowCleanupFlyout(false)} onCleanup={handleTriggerCleanup} />}
+      {showCleanupFlyout && <CleanupFlyout onClose={() => setShowCleanupFlyout(false)} onCleanup={handleTriggerCleanup} totalCount={stats?.softDeleted} />}
     </div>
   );
 }

@@ -90,8 +90,9 @@ public class AlbumService
             var album = await _albumRepo.GetByIdWithMediaAsync(albumId, ct);
             if (album != null)
             {
-                foreach (var am in album.AlbumMedia)
-                    await _mediaService.DeleteMediaWithBlobsAsync(am.MediaId, ct);
+                var mediaIds = album.AlbumMedia.Select(am => am.MediaId).ToList();
+                if (mediaIds.Count > 0)
+                    await _mediaService.DeleteBatchAsync(mediaIds, ct);
             }
         }
         await _albumRepo.DeleteAsync(albumId, ct);
