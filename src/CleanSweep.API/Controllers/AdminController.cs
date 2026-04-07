@@ -282,7 +282,7 @@ public class AdminController : ControllerBase
     [HttpPost("fix-stuck-status")]
     public async Task<ActionResult> FixStuckStatus(CancellationToken ct)
     {
-        // Only fix items that have thumbnails AND playback but status is still wrong
+        // Fix items that have thumbnails AND playback but status is still wrong
         var fixedCount = await _db.MediaItems
             .Where(m => !m.IsDeleted
                 && m.ThumbnailBlobPath != null
@@ -291,8 +291,35 @@ public class AdminController : ControllerBase
                 && m.ProcessingStatus != ProcessingStatus.Failed)
             .ExecuteUpdateAsync(s => s.SetProperty(m => m.ProcessingStatus, ProcessingStatus.Complete), ct);
 
-        _logger.LogInformation("Fixed {Count} stuck media items to Complete status", fixedCount);
-        return Ok(new { message = $"Fixed {fixedCount} stuck item(s)." });
+        // Reset stuck Transcoding/Processing items (older than 30 min) back to Pending for retry
+        var cutoff = DateTimeOffset.UtcNow.AddMinutes(-30);
+        var stuckTranscoding = await _db.MediaItems
+            .Where(m => !m.IsDeleted
+                && (m.ProcessingStatus == ProcessingStatus.Transcoding || m.ProcessingStatus == ProcessingStatus.Processing)
+                && m.UploadedAt < cutoff)
+            .ToListAsync(ct);
+
+        foreach (var item in stuckTranscoding)
+        {
+            item.ProcessingStatus = ProcessingStatus.Pending;
+            item.PlaybackBlobPath = null;
+
+            await _processingQueue.EnqueueAsync(new ProcessingMessage
+            {
+                MediaId = item.Id,
+                BlobPath = item.OriginalBlobPath,
+                ContentType = item.ContentType,
+                FileName = item.FileName,
+                UserId = item.UserId,
+                CorrelationId = Guid.NewGuid().ToString("N")
+            }, ct);
+        }
+
+        if (stuckTranscoding.Count > 0)
+            await _db.SaveChangesAsync(ct);
+
+        _logger.LogInformation("Fixed {Count} stuck media items to Complete, re-queued {TranscodeCount} stuck Transcoding/Processing items", fixedCount, stuckTranscoding.Count);
+        return Ok(new { message = $"Fixed {fixedCount} stuck item(s). Re-queued {stuckTranscoding.Count} stuck Transcoding/Processing item(s)." });
     }
 
     [HttpPost("purge-failed")]

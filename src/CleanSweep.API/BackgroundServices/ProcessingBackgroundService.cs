@@ -227,12 +227,29 @@ public class ProcessingBackgroundService : BackgroundService
                         });
 
                         if (process == null) throw new InvalidOperationException("Failed to start FFmpeg process.");
-                        await process.WaitForExitAsync(stoppingToken);
+
+                        // Read stderr concurrently to avoid deadlock (FFmpeg writes progress to stderr)
+                        var stderrTask = process.StandardError.ReadToEndAsync(stoppingToken);
+
+                        // Timeout: 30 minutes max for transcoding
+                        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+                        timeoutCts.CancelAfter(TimeSpan.FromMinutes(30));
+
+                        try
+                        {
+                            await process.WaitForExitAsync(timeoutCts.Token);
+                        }
+                        catch (OperationCanceledException) when (!stoppingToken.IsCancellationRequested)
+                        {
+                            process.Kill(entireProcessTree: true);
+                            throw new TimeoutException($"FFmpeg transcode timed out after 30 minutes for {mediaItem.Id}");
+                        }
+
+                        var stderr = await stderrTask;
 
                         if (process.ExitCode != 0)
                         {
-                            var err = await process.StandardError.ReadToEndAsync(stoppingToken);
-                            throw new InvalidOperationException($"FFmpeg transcode failed (exit={process.ExitCode}): {err}");
+                            throw new InvalidOperationException($"FFmpeg transcode failed (exit={process.ExitCode}): {stderr[..Math.Min(stderr.Length, 500)]}");
                         }
 
                         // Upload transcoded file to playback container
