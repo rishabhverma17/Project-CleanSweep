@@ -174,6 +174,7 @@ public class AdminController : ControllerBase
                 {
                     item.ProcessingStatus = ProcessingStatus.Pending;
                     item.ThumbnailBlobPath = null;
+                    item.PlaybackBlobPath = null;
 
                     await queue.EnqueueAsync(new ProcessingMessage
                     {

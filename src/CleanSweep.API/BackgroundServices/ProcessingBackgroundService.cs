@@ -14,19 +14,22 @@ public class ProcessingBackgroundService : BackgroundService
     private readonly ILogger<ProcessingBackgroundService> _logger;
     private readonly QueueOptions _queueOptions;
     private readonly StorageOptions _storageOptions;
+    private readonly TranscodeOptions _transcodeOptions;
 
     public ProcessingBackgroundService(
         IServiceScopeFactory scopeFactory,
         IMediaProcessingQueue queue,
         ILogger<ProcessingBackgroundService> logger,
         IOptions<QueueOptions> queueOptions,
-        IOptions<StorageOptions> storageOptions)
+        IOptions<StorageOptions> storageOptions,
+        IOptions<TranscodeOptions> transcodeOptions)
     {
         _scopeFactory = scopeFactory;
         _queue = queue;
         _logger = logger;
         _queueOptions = queueOptions.Value;
         _storageOptions = storageOptions.Value;
+        _transcodeOptions = transcodeOptions.Value;
     }
 
     private const int MaxConcurrentProcessing = 6;
@@ -189,6 +192,76 @@ public class ProcessingBackgroundService : BackgroundService
                     _logger.LogWarning(ex, "Thumbnail generation failed for {MediaId} ({ContentType}), continuing",
                         mediaItem.Id, mediaItem.ContentType);
                 }
+
+                // --- Transcode decision (inside try so tempPath is still available) ---
+                // Formats that need transcoding to MP4 for browser playback:
+                // - HEVC/H.265 (Safari-only, not supported in Chrome/Firefox)
+                // - FLV (not supported by any browser's <video> tag)
+                var nonBrowserContentTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    "video/x-flv",
+                };
+
+                var needsTranscode = mediaItem.MediaType == MediaType.Video
+                    && (nonBrowserContentTypes.Contains(mediaItem.ContentType)
+                        || (mediaItem.SourceCodec != null
+                            && mediaItem.SourceCodec.Contains("hevc", StringComparison.OrdinalIgnoreCase)));
+
+                if (needsTranscode)
+                {
+                    mediaItem.ProcessingStatus = ProcessingStatus.Transcoding;
+                    await mediaRepo.UpdateAsync(mediaItem, stoppingToken);
+
+                    // Transcode locally using FFmpeg CLI (already available for thumbnail generation)
+                    var tempOutput = Path.Combine(tempDir, $"{mediaItem.Id}_playback.mp4");
+                    try
+                    {
+                        var args = $"-y -i \"{tempPath}\" -c:v libx264 -crf {_transcodeOptions.Crf} -preset {_transcodeOptions.Preset} -c:a aac -b:a 128k -movflags +faststart \"{tempOutput}\"";
+                        _logger.LogInformation("Transcoding {MediaId}: ffmpeg {Args}", mediaItem.Id, args);
+
+                        var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("ffmpeg", args)
+                        {
+                            RedirectStandardError = true,
+                            UseShellExecute = false,
+                            CreateNoWindow = true
+                        });
+
+                        if (process == null) throw new InvalidOperationException("Failed to start FFmpeg process.");
+                        await process.WaitForExitAsync(stoppingToken);
+
+                        if (process.ExitCode != 0)
+                        {
+                            var err = await process.StandardError.ReadToEndAsync(stoppingToken);
+                            throw new InvalidOperationException($"FFmpeg transcode failed (exit={process.ExitCode}): {err}");
+                        }
+
+                        // Upload transcoded file to playback container
+                        var targetBlobPath = BlobPathGenerator.Generate(mediaItem.Id, ".mp4");
+                        await using (var outputStream = File.OpenRead(tempOutput))
+                        {
+                            await blobService.UploadAsync(outputStream, _storageOptions.PlaybackContainer, targetBlobPath, "video/mp4", stoppingToken);
+                        }
+
+                        mediaItem.PlaybackBlobPath = targetBlobPath;
+                        mediaItem.ProcessingStatus = ProcessingStatus.Complete;
+                        _logger.LogInformation("Transcode complete for {MediaId}: {OutputSize:F1} MB",
+                            mediaItem.Id, new FileInfo(tempOutput).Length / 1024.0 / 1024.0);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Transcode failed for {MediaId}", mediaItem.Id);
+                        mediaItem.ProcessingStatus = ProcessingStatus.Failed;
+                    }
+                    finally
+                    {
+                        if (File.Exists(tempOutput)) File.Delete(tempOutput);
+                    }
+                }
+                else
+                {
+                    mediaItem.PlaybackBlobPath = mediaItem.OriginalBlobPath;
+                    mediaItem.ProcessingStatus = ProcessingStatus.Complete;
+                }
             }
             finally
             {
@@ -197,40 +270,6 @@ public class ProcessingBackgroundService : BackgroundService
                     File.Delete(tempPath);
                     _logger.LogDebug("Cleaned up temp file: {TempPath}", tempPath);
                 }
-            }
-
-            // Formats that need transcoding to MP4 for browser playback:
-            // - HEVC/H.265 (Safari-only, not supported in Chrome/Firefox)
-            // - FLV (not supported by any browser's <video> tag)
-            var nonBrowserContentTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            {
-                "video/x-flv",
-            };
-
-            var needsTranscode = mediaItem.MediaType == MediaType.Video
-                && (nonBrowserContentTypes.Contains(mediaItem.ContentType)
-                    || (mediaItem.SourceCodec != null
-                        && mediaItem.SourceCodec.Contains("hevc", StringComparison.OrdinalIgnoreCase)));
-
-            if (needsTranscode)
-            {
-                mediaItem.ProcessingStatus = ProcessingStatus.Transcoding;
-                var targetPath = BlobPathGenerator.Generate(mediaItem.Id, ".mp4");
-                await transcodeQueue.EnqueueAsync(new TranscodeMessage
-                {
-                    MediaId = mediaItem.Id,
-                    SourceBlobPath = mediaItem.OriginalBlobPath,
-                    TargetBlobPath = targetPath,
-                    SourceContainer = _storageOptions.OriginalsContainer,
-                    TargetContainer = _storageOptions.PlaybackContainer,
-                    UserId = mediaItem.UserId,
-                    CorrelationId = item.Message.CorrelationId
-                }, stoppingToken);
-            }
-            else
-            {
-                mediaItem.PlaybackBlobPath = mediaItem.OriginalBlobPath;
-                mediaItem.ProcessingStatus = ProcessingStatus.Complete;
             }
 
             await mediaRepo.UpdateAsync(mediaItem, stoppingToken);
