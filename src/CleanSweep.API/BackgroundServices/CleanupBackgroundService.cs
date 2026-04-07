@@ -1,6 +1,7 @@
 using CleanSweep.Application.Configuration;
 using CleanSweep.Application.Interfaces;
 using CleanSweep.Application.Services;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace CleanSweep.API.BackgroundServices;
@@ -43,6 +44,7 @@ public class CleanupBackgroundService : BackgroundService
         {
             try
             {
+                await CleanOrphanedUploadingAsync(stoppingToken);
                 await RunFullCleanupAsync(stoppingToken);
                 _logger.LogInformation("CleanupBackgroundService sleeping for {Interval}", PollInterval);
                 await Task.Delay(PollInterval, stoppingToken);
@@ -54,6 +56,51 @@ public class CleanupBackgroundService : BackgroundService
                 await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken);
             }
         }
+    }
+
+    /// <summary>
+    /// Marks orphaned "Uploading" items (older than 1 hour, no blob) as Failed,
+    /// then soft-deletes them so they don't pollute the gallery with blank thumbnails.
+    /// </summary>
+    private async Task CleanOrphanedUploadingAsync(CancellationToken ct)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CleanSweep.Infrastructure.Persistence.AppDbContext>();
+        var cutoff = DateTimeOffset.UtcNow.AddHours(-1);
+
+        var orphans = await db.MediaItems
+            .Where(m => !m.IsDeleted
+                && m.ProcessingStatus == CleanSweep.Domain.Enums.ProcessingStatus.Uploading
+                && m.UploadedAt < cutoff)
+            .ToListAsync(ct);
+
+        if (orphans.Count == 0) return;
+
+        var blobChecked = 0;
+        var softDeleted = 0;
+
+        foreach (var item in orphans)
+        {
+            var exists = false;
+            try { exists = await _blobService.ExistsAsync(_storageOptions.OriginalsContainer, item.OriginalBlobPath, ct); }
+            catch { }
+            blobChecked++;
+
+            if (!exists)
+            {
+                // No blob was ever uploaded — soft-delete so it gets cleaned up
+                item.ProcessingStatus = CleanSweep.Domain.Enums.ProcessingStatus.Failed;
+                item.IsDeleted = true;
+                item.DeletedAt = DateTimeOffset.UtcNow;
+                softDeleted++;
+            }
+            // If blob exists, leave it — the admin reprocess-stuck endpoint can handle it
+        }
+
+        await db.SaveChangesAsync(ct);
+
+        if (softDeleted > 0)
+            _logger.LogInformation("Orphan cleanup: checked {Checked} stuck Uploading items, soft-deleted {Deleted} (no blob)", blobChecked, softDeleted);
     }
 
     /// <summary>

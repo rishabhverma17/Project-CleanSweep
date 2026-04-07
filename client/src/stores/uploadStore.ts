@@ -327,31 +327,23 @@ export const useUploadStore = create<UploadStore>((set, get) => {
     }
   };
 
-  const uploadFile = async (item: UploadItem, attempt = 0) => {
+  const uploadFile = async (item: UploadItem) => {
     try {
       updateItem(item.id, { status: 'requesting', progress: 0 });
 
-      // Try batch SAS if available, fall back to single
-      let mediaId: string;
-      let uploadUrl: string;
-
+      // Request SAS URL only once — retries reuse the same mediaId + URL
       const resp = await mediaApi.requestUpload(item.file.name, inferContentType(item.file), item.file.size);
-      mediaId = resp.mediaId;
-      uploadUrl = resp.uploadUrl;
+      const mediaId = resp.mediaId;
+      const uploadUrl = resp.uploadUrl;
 
       updateItem(item.id, { mediaId, status: 'uploading' });
 
+      // uploadToBlob already has its own retry logic (retries the PUT with same SAS URL)
       await uploadToBlob(uploadUrl, item.file, item.id);
 
       // Queue completion instead of awaiting — batched for speed
       queueComplete(mediaId, item.id);
     } catch (err: any) {
-      if (attempt < MAX_RETRIES) {
-        const delay = Math.min(INITIAL_RETRY_DELAY * Math.pow(2, attempt), 30000);
-        updateItem(item.id, { status: 'uploading', progress: 0, error: `Retry ${attempt + 1}/${MAX_RETRIES}...` });
-        await new Promise(r => setTimeout(r, delay));
-        return uploadFile(item, attempt + 1);
-      }
       updateItem(item.id, { status: 'error', error: err.message || 'Upload failed' });
     }
   };

@@ -199,9 +199,18 @@ public class ProcessingBackgroundService : BackgroundService
                 }
             }
 
+            // Formats that need transcoding to MP4 for browser playback:
+            // - HEVC/H.265 (Safari-only, not supported in Chrome/Firefox)
+            // - FLV (not supported by any browser's <video> tag)
+            var nonBrowserContentTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "video/x-flv",
+            };
+
             var needsTranscode = mediaItem.MediaType == MediaType.Video
-                && mediaItem.SourceCodec != null
-                && mediaItem.SourceCodec.Contains("hevc", StringComparison.OrdinalIgnoreCase);
+                && (nonBrowserContentTypes.Contains(mediaItem.ContentType)
+                    || (mediaItem.SourceCodec != null
+                        && mediaItem.SourceCodec.Contains("hevc", StringComparison.OrdinalIgnoreCase)));
 
             if (needsTranscode)
             {
