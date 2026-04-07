@@ -103,6 +103,15 @@ public class MediaRepository : IMediaRepository
 
     public async Task HardDeleteBatchAsync(List<Guid> ids, CancellationToken ct)
     {
+        // Remove FK references first (AlbumMedia and FamilyMedia use Restrict on MediaId)
+        await _db.AlbumMedia
+            .Where(am => ids.Contains(am.MediaId))
+            .ExecuteDeleteAsync(ct);
+
+        await _db.FamilyMedia
+            .Where(fm => ids.Contains(fm.MediaId))
+            .ExecuteDeleteAsync(ct);
+
         await _db.MediaItems
             .Where(m => ids.Contains(m.Id))
             .ExecuteDeleteAsync(ct);
