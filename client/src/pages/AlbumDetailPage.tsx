@@ -179,7 +179,12 @@ export function AlbumDetailPage() {
     if (!albumId) return;
     setShowFamilyShare(false);
     await runTask(`Sharing album "${data?.album.name}" to family`, async () => {
-      await familyApi.shareAlbum(familyId, albumId);
+      try {
+        await familyApi.shareAlbum(familyId, albumId);
+      } catch (err: any) {
+        const msg = err.response?.data?.error || err.message || 'Failed to share album';
+        throw new Error(msg);
+      }
       queryClient.invalidateQueries({ queryKey: ['album', albumId] });
       queryClient.invalidateQueries({ queryKey: ['families'] });
     });

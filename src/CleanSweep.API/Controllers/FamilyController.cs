@@ -18,16 +18,18 @@ public class FamilyController : ControllerBase
     private readonly FamilyService _familyService;
     private readonly IFamilyRepository _familyRepo;
     private readonly IAlbumRepository _albumRepo;
+    private readonly ICurrentUserService _currentUser;
     private readonly IBlobStorageService _blobService;
     private readonly INotificationService _notificationService;
     private readonly StorageOptions _storageOptions;
     private readonly AppDbContext _db;
 
-    public FamilyController(FamilyService familyService, IFamilyRepository familyRepo, IAlbumRepository albumRepo, IBlobStorageService blobService, INotificationService notificationService, IOptions<StorageOptions> storageOptions, AppDbContext db)
+    public FamilyController(FamilyService familyService, IFamilyRepository familyRepo, IAlbumRepository albumRepo, ICurrentUserService currentUser, IBlobStorageService blobService, INotificationService notificationService, IOptions<StorageOptions> storageOptions, AppDbContext db)
     {
         _familyService = familyService;
         _familyRepo = familyRepo;
         _albumRepo = albumRepo;
+        _currentUser = currentUser;
         _blobService = blobService;
         _notificationService = notificationService;
         _storageOptions = storageOptions.Value;
@@ -126,17 +128,24 @@ public class FamilyController : ControllerBase
     [HttpPost("{familyId:guid}/albums/{albumId:guid}")]
     public async Task<ActionResult> ShareAlbum(Guid familyId, Guid albumId, CancellationToken ct)
     {
-        var userId = HttpContext.User.FindFirst("http://schemas.microsoft.com/identity/claims/objectidentifier")?.Value
-                  ?? HttpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var userId = _currentUser.UserId;
         if (userId == null || !await _familyRepo.IsMemberAsync(familyId, userId, ct))
             return Forbid();
 
-        // Direct update without loading entity graph to avoid EF tracking issues
+        // Set FamilyId on the album — owner must match current user
         var updated = await _db.Albums
             .Where(a => a.Id == albumId && a.UserId == userId)
             .ExecuteUpdateAsync(s => s.SetProperty(a => a.FamilyId, familyId), ct);
 
-        if (updated == 0) return NotFound();
+        if (updated == 0)
+        {
+            // Fallback: try without user filter in case of mismatch — log for debugging
+            var album = await _db.Albums.FirstOrDefaultAsync(a => a.Id == albumId, ct);
+            if (album == null) return NotFound(new { error = "Album not found", albumId });
+            if (album.UserId != userId)
+                return BadRequest(new { error = "Album owner mismatch", albumUserId = album.UserId, currentUserId = userId });
+            return NotFound(new { error = "Update failed unexpectedly" });
+        }
 
         await _notificationService.BroadcastMediaChangedAsync(ct);
         return Ok(new { shared = true, albumId, familyId });

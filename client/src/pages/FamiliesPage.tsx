@@ -153,7 +153,7 @@ export function FamiliesPage() {
               {family.role === 'admin' && (
                 <div className="mt-3 flex gap-2">
                   <button onClick={() => navigate(`/families/${family.id}`)} className="text-xs px-3 py-1.5 rounded transition flex items-center gap-1" style={{ color: 'var(--accent)' }}>
-                    <Image size={12} /> Browse{(family.albumCount || 0) + family.mediaCount > 0 ? ` (${(family.albumCount || 0)} album${(family.albumCount || 0) !== 1 ? 's' : ''}, ${family.mediaCount} media)` : ''}
+                    <Image size={12} /> Browse Media ({family.mediaCount})
                   </button>
                   <button onClick={() => handleDelete(family)} className="text-xs px-3 py-1.5 rounded transition text-red-400 hover:bg-red-500/10">
                     Delete Family
@@ -163,7 +163,7 @@ export function FamiliesPage() {
               {family.role !== 'admin' && (
                 <div className="mt-3">
                   <button onClick={() => navigate(`/families/${family.id}`)} className="text-xs px-3 py-1.5 rounded transition flex items-center gap-1" style={{ color: 'var(--accent)' }}>
-                    <Image size={12} /> Browse{(family.albumCount || 0) + family.mediaCount > 0 ? ` (${(family.albumCount || 0)} album${(family.albumCount || 0) !== 1 ? 's' : ''}, ${family.mediaCount} media)` : ''}
+                    <Image size={12} /> Browse Media ({family.mediaCount})
                   </button>
                 </div>
               )}
