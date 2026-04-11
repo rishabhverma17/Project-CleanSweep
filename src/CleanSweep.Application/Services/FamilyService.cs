@@ -11,6 +11,7 @@ namespace CleanSweep.Application.Services;
 public class FamilyService
 {
     private readonly IFamilyRepository _familyRepo;
+    private readonly IAlbumRepository _albumRepo;
     private readonly IUserRepository _userRepo;
     private readonly ICurrentUserService _currentUser;
     private readonly QuotaOptions _quotaOptions;
@@ -18,12 +19,14 @@ public class FamilyService
 
     public FamilyService(
         IFamilyRepository familyRepo,
+        IAlbumRepository albumRepo,
         IUserRepository userRepo,
         ICurrentUserService currentUser,
         IOptions<QuotaOptions> quotaOptions,
         ILogger<FamilyService> logger)
     {
         _familyRepo = familyRepo;
+        _albumRepo = albumRepo;
         _userRepo = userRepo;
         _currentUser = currentUser;
         _quotaOptions = quotaOptions.Value;
@@ -79,6 +82,7 @@ public class FamilyService
                 Id = f.Id, Name = f.Name, InviteCode = member?.Role == "admin" ? f.InviteCode : null,
                 MemberCount = f.Members.Count,
                 MediaCount = await _familyRepo.GetFamilyMediaCountAsync(f.Id, ct),
+                AlbumCount = await _familyRepo.GetFamilyAlbumCountAsync(f.Id, ct),
                 StorageUsedBytes = await _familyRepo.GetFamilyStorageUsageAsync(f.Id, ct),
                 QuotaBytes = f.QuotaBytes,
                 Role = member?.Role ?? "member",

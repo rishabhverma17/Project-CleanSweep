@@ -6,6 +6,7 @@ export interface FamilyDto {
   inviteCode?: string;
   memberCount: number;
   mediaCount: number;
+  albumCount: number;
   storageUsedBytes: number;
   quotaBytes: number;
   role: string;

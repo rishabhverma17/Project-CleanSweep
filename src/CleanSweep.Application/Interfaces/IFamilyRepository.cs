@@ -17,6 +17,7 @@ public interface IFamilyRepository
     Task RemoveMediaAsync(Guid familyId, Guid mediaId, CancellationToken ct = default);
     Task<List<FamilyMedia>> GetFamilyMediaAsync(Guid familyId, int page, int pageSize, CancellationToken ct = default);
     Task<int> GetFamilyMediaCountAsync(Guid familyId, CancellationToken ct = default);
+    Task<int> GetFamilyAlbumCountAsync(Guid familyId, CancellationToken ct = default);
     Task<long> GetFamilyStorageUsageAsync(Guid familyId, CancellationToken ct = default);
     Task<bool> IsMemberAsync(Guid familyId, string userId, CancellationToken ct = default);
 }

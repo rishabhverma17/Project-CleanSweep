@@ -114,7 +114,10 @@ export function FamiliesPage() {
                 <div>
                   <h3 className="text-lg font-medium" style={{ color: 'var(--text-primary)' }}>{family.name}</h3>
                   <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
-                    {family.memberCount} member{family.memberCount !== 1 ? 's' : ''} · {family.mediaCount} shared photos · {formatBytes(family.storageUsedBytes)}
+                    {family.memberCount} member{family.memberCount !== 1 ? 's' : ''}
+                    {family.albumCount > 0 && <> · {family.albumCount} album{family.albumCount !== 1 ? 's' : ''}</>}
+                    {family.mediaCount > 0 && <> · {family.mediaCount} shared photo{family.mediaCount !== 1 ? 's' : ''}</>}
+                    {family.storageUsedBytes > 0 && <> · {formatBytes(family.storageUsedBytes)}</>}
                   </p>
                 </div>
                 <span className="text-xs px-2 py-1 rounded-full" style={{ background: family.role === 'admin' ? 'rgba(138,180,248,0.15)' : 'rgba(255,255,255,0.05)', color: family.role === 'admin' ? 'var(--accent)' : 'var(--text-muted)' }}>

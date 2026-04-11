@@ -80,6 +80,9 @@ public class FamilyRepository : IFamilyRepository
     public async Task<int> GetFamilyMediaCountAsync(Guid familyId, CancellationToken ct)
         => await _db.FamilyMedia.CountAsync(fm => fm.FamilyId == familyId && !fm.Media.IsDeleted, ct);
 
+    public async Task<int> GetFamilyAlbumCountAsync(Guid familyId, CancellationToken ct)
+        => await _db.Albums.CountAsync(a => a.FamilyId == familyId && !a.IsHidden, ct);
+
     public async Task<long> GetFamilyStorageUsageAsync(Guid familyId, CancellationToken ct)
         => await _db.FamilyMedia
             .Where(fm => fm.FamilyId == familyId && !fm.Media.IsDeleted)
