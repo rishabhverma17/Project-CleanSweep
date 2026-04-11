@@ -16,6 +16,7 @@ public class AlbumConfiguration : IEntityTypeConfiguration<Album>
 
         builder.HasOne(a => a.User).WithMany(u => u.Albums).HasForeignKey(a => a.UserId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(a => a.CoverMedia).WithMany().HasForeignKey(a => a.CoverMediaId).OnDelete(DeleteBehavior.SetNull);
+        builder.HasOne(a => a.Family).WithMany().HasForeignKey(a => a.FamilyId).OnDelete(DeleteBehavior.SetNull);
         builder.Property(a => a.IsHidden).HasDefaultValue(false);
     }
 }

@@ -2,8 +2,10 @@ using CleanSweep.Application.Configuration;
 using CleanSweep.Application.DTOs;
 using CleanSweep.Application.Interfaces;
 using CleanSweep.Application.Services;
+using CleanSweep.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace CleanSweep.API.Controllers;
@@ -15,17 +17,21 @@ public class FamilyController : ControllerBase
 {
     private readonly FamilyService _familyService;
     private readonly IFamilyRepository _familyRepo;
+    private readonly IAlbumRepository _albumRepo;
     private readonly IBlobStorageService _blobService;
     private readonly INotificationService _notificationService;
     private readonly StorageOptions _storageOptions;
+    private readonly AppDbContext _db;
 
-    public FamilyController(FamilyService familyService, IFamilyRepository familyRepo, IBlobStorageService blobService, INotificationService notificationService, IOptions<StorageOptions> storageOptions)
+    public FamilyController(FamilyService familyService, IFamilyRepository familyRepo, IAlbumRepository albumRepo, IBlobStorageService blobService, INotificationService notificationService, IOptions<StorageOptions> storageOptions, AppDbContext db)
     {
         _familyService = familyService;
         _familyRepo = familyRepo;
+        _albumRepo = albumRepo;
         _blobService = blobService;
         _notificationService = notificationService;
         _storageOptions = storageOptions.Value;
+        _db = db;
     }
 
     [HttpGet]
@@ -115,6 +121,83 @@ public class FamilyController : ControllerBase
     {
         var code = await _familyService.RegenerateInviteCodeAsync(familyId, input.ExpiryDays, ct);
         return Ok(new { inviteCode = code });
+    }
+
+    [HttpPost("{familyId:guid}/albums/{albumId:guid}")]
+    public async Task<ActionResult> ShareAlbum(Guid familyId, Guid albumId, CancellationToken ct)
+    {
+        var userId = HttpContext.User.FindFirst("http://schemas.microsoft.com/identity/claims/objectidentifier")?.Value
+                  ?? HttpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (userId == null || !await _familyRepo.IsMemberAsync(familyId, userId, ct))
+            return Forbid();
+
+        var album = await _albumRepo.GetByIdWithMediaAsync(albumId, ct);
+        if (album == null || album.UserId != userId) return NotFound();
+
+        album.FamilyId = familyId;
+        await _albumRepo.UpdateAsync(album, ct);
+        await _notificationService.BroadcastMediaChangedAsync(ct);
+        return Ok();
+    }
+
+    [HttpDelete("{familyId:guid}/albums/{albumId:guid}")]
+    public async Task<ActionResult> UnshareAlbum(Guid familyId, Guid albumId, CancellationToken ct)
+    {
+        var userId = HttpContext.User.FindFirst("http://schemas.microsoft.com/identity/claims/objectidentifier")?.Value
+                  ?? HttpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (userId == null) return Forbid();
+
+        var album = await _albumRepo.GetByIdWithMediaAsync(albumId, ct);
+        if (album == null) return NotFound();
+        if (album.UserId != userId && !await _familyRepo.IsMemberAsync(familyId, userId, ct))
+            return Forbid();
+
+        if (album.FamilyId == familyId)
+        {
+            album.FamilyId = null;
+            await _albumRepo.UpdateAsync(album, ct);
+        }
+        await _notificationService.BroadcastMediaChangedAsync(ct);
+        return NoContent();
+    }
+
+    [HttpGet("{familyId:guid}/albums")]
+    public async Task<ActionResult> GetFamilyAlbums(Guid familyId, CancellationToken ct)
+    {
+        var userId = HttpContext.User.FindFirst("http://schemas.microsoft.com/identity/claims/objectidentifier")?.Value
+                  ?? HttpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (userId == null || !await _familyRepo.IsMemberAsync(familyId, userId, ct))
+            return Forbid();
+
+        var sasExpiry = TimeSpan.FromMinutes(_storageOptions.ReadSasExpiryMinutes);
+
+        var albums = await _db.Albums
+            .Include(a => a.AlbumMedia).ThenInclude(am => am.Media)
+            .Where(a => a.FamilyId == familyId && !a.IsHidden)
+            .OrderByDescending(a => a.CreatedAt)
+            .ToListAsync(ct);
+
+        var dtos = new List<object>();
+        foreach (var a in albums)
+        {
+            string? coverUrl = null;
+            var coverMedia = a.AlbumMedia.FirstOrDefault(am => am.Media.ThumbnailBlobPath != null)?.Media;
+            if (coverMedia?.ThumbnailBlobPath != null)
+                coverUrl = (await _blobService.GenerateReadSasUriAsync(_storageOptions.ThumbnailsContainer, coverMedia.ThumbnailBlobPath, sasExpiry, ct)).ToString();
+
+            dtos.Add(new
+            {
+                a.Id,
+                a.Name,
+                a.Description,
+                CoverThumbnailUrl = coverUrl,
+                MediaCount = a.AlbumMedia.Count(am => am.Media != null && !am.Media.IsDeleted),
+                a.CreatedAt,
+                OwnerUserId = a.UserId
+            });
+        }
+
+        return Ok(dtos);
     }
 }
 

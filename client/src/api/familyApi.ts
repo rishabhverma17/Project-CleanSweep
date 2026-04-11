@@ -53,6 +53,16 @@ export const familyApi = {
     const { data } = await api.post<{ inviteCode: string }>(`/api/family/${familyId}/invite`, { expiryDays });
     return data;
   },
+  shareAlbum: async (familyId: string, albumId: string) => {
+    await api.post(`/api/family/${familyId}/albums/${albumId}`);
+  },
+  unshareAlbum: async (familyId: string, albumId: string) => {
+    await api.delete(`/api/family/${familyId}/albums/${albumId}`);
+  },
+  getFamilyAlbums: async (familyId: string) => {
+    const { data } = await api.get(`/api/family/${familyId}/albums`);
+    return data as { id: string; name: string; description?: string; coverThumbnailUrl?: string; mediaCount: number; createdAt: string; ownerUserId: string }[];
+  },
 };
 
 export const quotaApi = {

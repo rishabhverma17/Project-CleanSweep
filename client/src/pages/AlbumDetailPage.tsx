@@ -176,11 +176,12 @@ export function AlbumDetailPage() {
   };
 
   const handleShareToFamily = async (familyId: string) => {
-    if (!sortedMedia.length) return;
-    const mediaIds = sortedMedia.map(m => m.id);
+    if (!albumId) return;
     setShowFamilyShare(false);
-    await runTask(`Sharing ${mediaIds.length} item(s) to family`, async () => {
-      await familyApi.shareMedia(familyId, mediaIds);
+    await runTask(`Sharing album "${data?.album.name}" to family`, async () => {
+      await familyApi.shareAlbum(familyId, albumId);
+      queryClient.invalidateQueries({ queryKey: ['album', albumId] });
+      queryClient.invalidateQueries({ queryKey: ['families'] });
     });
   };
 

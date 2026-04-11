@@ -3,11 +3,12 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { familyApi } from '../api/familyApi';
 import { mediaApi } from '../api/mediaApi';
+import { albumApi } from '../api/albumApi';
 import { MediaGrid } from '../components/media/MediaGrid';
 import { MediaViewer } from '../components/media/MediaViewer';
 import { useTrackedTask } from '../hooks/useTrackedTask';
 import type { MediaItem } from '../types/media';
-import { ArrowLeft, Download, Check, Trash2 } from 'lucide-react';
+import { ArrowLeft, Download, Check, Trash2, FolderOpen } from 'lucide-react';
 
 function sortMedia(items: MediaItem[], sort: string): MediaItem[] {
   const sorted = [...items];
@@ -30,6 +31,7 @@ export function FamilyMediaPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectMode, setSelectMode] = useState(false);
   const [sort, setSort] = useState('captured_desc');
+  const [viewingAlbumId, setViewingAlbumId] = useState<string | null>(null);
 
   const { data: families } = useQuery({ queryKey: ['families'], queryFn: familyApi.getMyFamilies });
   const family = families?.find(f => f.id === familyId);
@@ -40,7 +42,19 @@ export function FamilyMediaPage() {
     enabled: !!familyId,
   });
 
-  const items: MediaItem[] = data?.items ?? [];
+  const { data: familyAlbums } = useQuery({
+    queryKey: ['family-albums', familyId],
+    queryFn: () => familyApi.getFamilyAlbums(familyId!),
+    enabled: !!familyId,
+  });
+
+  const { data: albumDetail } = useQuery({
+    queryKey: ['album', viewingAlbumId],
+    queryFn: () => albumApi.getById(viewingAlbumId!),
+    enabled: !!viewingAlbumId,
+  });
+
+  const items: MediaItem[] = viewingAlbumId && albumDetail ? albumDetail.media : (data?.items ?? []);
   const sortedItems = useMemo(() => sortMedia(items, sort), [items, sort]);
 
   const toggleSelect = (id: string) => {
@@ -99,11 +113,26 @@ export function FamilyMediaPage() {
     <div>
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <div>
-          <button onClick={() => navigate('/families')} className="text-sm mb-1 transition flex items-center gap-1" style={{ color: 'var(--text-muted)' }}>
-            <ArrowLeft size={14} /> Families
-          </button>
-          <h2 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{family?.name || 'Family'} — Shared Media</h2>
-          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{sortedItems.length} items</p>
+          {viewingAlbumId ? (
+            <>
+              <button onClick={() => { setViewingAlbumId(null); setSelectMode(false); setSelectedIds(new Set()); }} className="text-sm mb-1 transition flex items-center gap-1" style={{ color: 'var(--text-muted)' }}>
+                <ArrowLeft size={14} /> {family?.name || 'Family'}
+              </button>
+              <h2 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{albumDetail?.album.name || 'Album'}</h2>
+              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{sortedItems.length} items</p>
+            </>
+          ) : (
+            <>
+              <button onClick={() => navigate('/families')} className="text-sm mb-1 transition flex items-center gap-1" style={{ color: 'var(--text-muted)' }}>
+                <ArrowLeft size={14} /> Families
+              </button>
+              <h2 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{family?.name || 'Family'}</h2>
+              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                {familyAlbums && familyAlbums.length > 0 && <>{familyAlbums.length} album{familyAlbums.length !== 1 ? 's' : ''} · </>}
+                {sortedItems.length} shared items
+              </p>
+            </>
+          )}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <select
@@ -138,6 +167,42 @@ export function FamilyMediaPage() {
           )}
         </div>
       </div>
+
+      {/* Shared Albums */}
+      {!viewingAlbumId && familyAlbums && familyAlbums.length > 0 && (
+        <div className="mb-6">
+          <h3 className="text-sm font-medium mb-3" style={{ color: 'var(--text-muted)' }}>Shared Albums</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+            {familyAlbums.map(album => (
+              <button
+                key={album.id}
+                onClick={() => setViewingAlbumId(album.id)}
+                className="rounded-xl overflow-hidden text-left transition hover:brightness-125"
+                style={{ background: 'var(--card-bg)', border: '1px solid var(--border)' }}
+              >
+                <div className="aspect-square relative" style={{ background: 'var(--content-bg)' }}>
+                  {album.coverThumbnailUrl ? (
+                    <img src={album.coverThumbnailUrl} alt={album.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <FolderOpen size={32} style={{ color: 'var(--text-muted)' }} />
+                    </div>
+                  )}
+                </div>
+                <div className="p-2">
+                  <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>{album.name}</p>
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{album.mediaCount} items</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Shared Media heading (only when not viewing album) */}
+      {!viewingAlbumId && familyAlbums && familyAlbums.length > 0 && sortedItems.length > 0 && (
+        <h3 className="text-sm font-medium mb-3" style={{ color: 'var(--text-muted)' }}>Shared Media</h3>
+      )}
 
       <MediaGrid
         items={sortedItems}
