@@ -131,13 +131,15 @@ public class FamilyController : ControllerBase
         if (userId == null || !await _familyRepo.IsMemberAsync(familyId, userId, ct))
             return Forbid();
 
-        var album = await _albumRepo.GetByIdWithMediaAsync(albumId, ct);
-        if (album == null || album.UserId != userId) return NotFound();
+        // Direct update without loading entity graph to avoid EF tracking issues
+        var updated = await _db.Albums
+            .Where(a => a.Id == albumId && a.UserId == userId)
+            .ExecuteUpdateAsync(s => s.SetProperty(a => a.FamilyId, familyId), ct);
 
-        album.FamilyId = familyId;
-        await _albumRepo.UpdateAsync(album, ct);
+        if (updated == 0) return NotFound();
+
         await _notificationService.BroadcastMediaChangedAsync(ct);
-        return Ok();
+        return Ok(new { shared = true, albumId, familyId });
     }
 
     [HttpDelete("{familyId:guid}/albums/{albumId:guid}")]
@@ -147,16 +149,16 @@ public class FamilyController : ControllerBase
                   ?? HttpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         if (userId == null) return Forbid();
 
-        var album = await _albumRepo.GetByIdWithMediaAsync(albumId, ct);
+        // Only the album owner or a family member can unshare
+        var album = await _db.Albums.FirstOrDefaultAsync(a => a.Id == albumId && a.FamilyId == familyId, ct);
         if (album == null) return NotFound();
         if (album.UserId != userId && !await _familyRepo.IsMemberAsync(familyId, userId, ct))
             return Forbid();
 
-        if (album.FamilyId == familyId)
-        {
-            album.FamilyId = null;
-            await _albumRepo.UpdateAsync(album, ct);
-        }
+        await _db.Albums
+            .Where(a => a.Id == albumId && a.FamilyId == familyId)
+            .ExecuteUpdateAsync(s => s.SetProperty(a => a.FamilyId, (Guid?)null), ct);
+
         await _notificationService.BroadcastMediaChangedAsync(ct);
         return NoContent();
     }
