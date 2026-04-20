@@ -184,7 +184,7 @@ public class FamilyController : ControllerBase
 
         var albums = await _db.Albums
             .Include(a => a.AlbumMedia).ThenInclude(am => am.Media)
-            .Where(a => a.FamilyId == familyId && !a.IsHidden)
+            .Where(a => a.FamilyId == familyId)
             .OrderByDescending(a => a.CreatedAt)
             .ToListAsync(ct);
 

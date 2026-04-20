@@ -80,13 +80,21 @@ public class FamilyRepository : IFamilyRepository
     public async Task<int> GetFamilyMediaCountAsync(Guid familyId, CancellationToken ct)
         => await _db.FamilyMedia.CountAsync(fm => fm.FamilyId == familyId && !fm.Media.IsDeleted, ct);
 
+    public async Task<int> GetFamilyAlbumMediaCountAsync(Guid familyId, CancellationToken ct)
+        => await _db.AlbumMedia.CountAsync(am => am.Album.FamilyId == familyId && !am.Media.IsDeleted, ct);
+
     public async Task<int> GetFamilyAlbumCountAsync(Guid familyId, CancellationToken ct)
-        => await _db.Albums.CountAsync(a => a.FamilyId == familyId && !a.IsHidden, ct);
+        => await _db.Albums.CountAsync(a => a.FamilyId == familyId, ct);
 
     public async Task<long> GetFamilyStorageUsageAsync(Guid familyId, CancellationToken ct)
         => await _db.FamilyMedia
             .Where(fm => fm.FamilyId == familyId && !fm.Media.IsDeleted)
             .SumAsync(fm => fm.Media.FileSizeBytes, ct);
+
+    public async Task<long> GetFamilyAlbumStorageUsageAsync(Guid familyId, CancellationToken ct)
+        => await _db.AlbumMedia
+            .Where(am => am.Album.FamilyId == familyId && !am.Media.IsDeleted)
+            .SumAsync(am => (long?)am.Media.FileSizeBytes, ct) ?? 0;
 
     public async Task<bool> IsMemberAsync(Guid familyId, string userId, CancellationToken ct)
         => await _db.FamilyMembers.AnyAsync(fm => fm.FamilyId == familyId && fm.UserId == userId, ct);

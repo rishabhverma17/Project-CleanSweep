@@ -77,13 +77,17 @@ public class FamilyService
         foreach (var f in families)
         {
             var member = f.Members.FirstOrDefault(m => m.UserId == userId);
+            var sharedMediaCount = await _familyRepo.GetFamilyMediaCountAsync(f.Id, ct);
+            var albumMediaCount = await _familyRepo.GetFamilyAlbumMediaCountAsync(f.Id, ct);
+            var sharedStorage = await _familyRepo.GetFamilyStorageUsageAsync(f.Id, ct);
+            var albumStorage = await _familyRepo.GetFamilyAlbumStorageUsageAsync(f.Id, ct);
             dtos.Add(new FamilyDto
             {
                 Id = f.Id, Name = f.Name, InviteCode = member?.Role == "admin" ? f.InviteCode : null,
                 MemberCount = f.Members.Count,
-                MediaCount = await _familyRepo.GetFamilyMediaCountAsync(f.Id, ct),
+                MediaCount = sharedMediaCount + albumMediaCount,
                 AlbumCount = await _familyRepo.GetFamilyAlbumCountAsync(f.Id, ct),
-                StorageUsedBytes = await _familyRepo.GetFamilyStorageUsageAsync(f.Id, ct),
+                StorageUsedBytes = sharedStorage + albumStorage,
                 QuotaBytes = f.QuotaBytes,
                 Role = member?.Role ?? "member",
                 CreatedAt = f.CreatedAt
